@@ -1,3 +1,5 @@
+# (C) 2010 by Florian Mayer
+
 class CachedGetattr(type):
     @staticmethod
     def wrap_getattr(gattr):
