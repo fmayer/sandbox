@@ -48,11 +48,11 @@ if sys.platform == "win32":
             kernel32 = ctypes.windll.kernel32
             MoveFileTransacted = kernel32.MoveFileTransactedA
             MOVEFILE_REPLACE_EXISTING = kernel32.MOVEFILE_REPLACE_EXISTING
-        except (WindowsError, AttributeError):
+        except AttributeError:
             CreateTransaction = None
             try:
                 MoveFileEx = kernel32.MoveFileExA
-            except (WindowsError, AttributeError):
+            except AttributeError:
                 pass
 
 
@@ -84,7 +84,7 @@ def win_atomic_mv(src, dst):
         # is avaiable from Windows Server 2008/Windows Vista onwards.
         trnid = CreateTransaction(None, 0, 0, 0, 0, None, "")
         MoveFileTransacted(
-            source, target, None, None, MOVEFILE_REPLACE_EXISTING, trnid
+            src, dst, None, None, MOVEFILE_REPLACE_EXISTING, trnid
         )
         CommitTransaction(trnid)
 
