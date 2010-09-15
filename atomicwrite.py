@@ -98,8 +98,7 @@ if sys.platform == 'win32':
 elif os.name == 'posix':
     atomic_mv = posix_atomic_mv
 else:
-    # FIXME: What's the correct error here, anyway?
-    raise NotImplementedError
+    raise EnvironmentError
 
 class AtomicWrite(object):
     """
