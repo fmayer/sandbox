@@ -21,7 +21,7 @@
 """
 Try to guarantee atomic write operations. On POSIX systems there should not
 be a case where the file-system ends up being corrupted. On Windows the best
-avaiable method is chosen depending on the Windows Version, the only one that
+available method is chosen depending on the Windows Version, the only one that
 is guaranteed to be atomic is on Windows Vista/Windows Server 2008 or better.
 """
 
