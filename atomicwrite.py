@@ -25,8 +25,6 @@ available method is chosen depending on the Windows Version, the only one that
 is guaranteed to be atomic is on Windows Vista/Windows Server 2008 or better.
 """
 
-# TODO: Test on Windows.
-
 import os
 import sys
 import shutil
@@ -47,12 +45,12 @@ if sys.platform == "win32":
             CommitTransaction = ktmw32.CommitTransaction
             kernel32 = ctypes.windll.kernel32
             MoveFileTransacted = kernel32.MoveFileTransactedA
-            MOVEFILE_REPLACE_EXISTING = kernel32.MOVEFILE_REPLACE_EXISTING
-        except AttributeError:
+            MOVEFILE_REPLACE_EXISTING = 1
+        except (WindowsError, AttributeError):
             CreateTransaction = None
             try:
                 MoveFileEx = kernel32.MoveFileExA
-            except AttributeError:
+            except (WindowsError, AttributeError):
                 pass
 
 
@@ -67,8 +65,9 @@ def win_atomic_mv(src, dst):
         else:
             # Fall back to naive method.
             if os.path.exists(dst):
+                tmp = tempfile.mktemp(dir=os.path.dirname(dst))
+                os.rename(dst, tmp)
                 try:
-                    tmpfd, tmp = tempfile.mkstemp(dir=os.path.dirname(dst))
                     os.rename(src, dst)
                 except (SystemExit, KeyboardInterrupt):
                     # A heroic attempt to save this sinking ship
@@ -77,7 +76,6 @@ def win_atomic_mv(src, dst):
                     # just because the program is shutting down.
                     os.rename(src, dst)
                 finally:
-                    os.close(tmpfd)
                     os.unlink(tmp)
             else:
                 os.rename(src, dst)
@@ -142,19 +140,18 @@ class AtomicWrite(object):
             # directory the file to be replaced lies in, and thus
             # on the same file-system.
             try:
+                self.temp.close()
                 atomic_mv(self.tempname, self.name)
             except:
                 if os.path.exists(self.tempname):
                     os.unlink(self.tempname)
                 # We are not swallowing any errors here.
                 raise
-            finally:
-                self.temp.close()
 
 
 __all__ = ['AtomicWrite', 'atomic_mv', 'posix_atomic_mv', 'win_atomic_mv']
 
 
 if __name__ == '__main__':
-    with AtomicWrite(os.path.join(os.environ['HOME'], 'testfoo'), 'ab') as fd:
+    with AtomicWrite(os.path.join(os.environ['HOME'], 'testfoo.txt'), 'wb') as fd:
         fd.write('Hallo Welt\n')
