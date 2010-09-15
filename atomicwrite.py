@@ -57,6 +57,8 @@ if sys.platform == "win32":
 
 
 def win_atomic_mv(src, dst):
+    """ Try to move src to dst as atomically as possible, overriding dst
+    if it exists. """
     if CreateTransaction is None:
         if MoveFileEx is not None:
             # Fall back to MoveFileEx which is not guaranteed to be
@@ -90,6 +92,7 @@ def win_atomic_mv(src, dst):
 
 
 def posix_atomic_mv(src, dst):
+    """ Atomically move src to dst, overriding dst if it exists. """
     os.rename(src, dst)
 
 
