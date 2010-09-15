@@ -44,12 +44,12 @@ if sys.platform == "win32":
             CreateTransaction = ktmw32.CreateTransaction
             CommitTransaction = ktmw32.CommitTransaction
             kernel32 = ctypes.windll.kernel32
-            MoveFileTransacted = kernel32.MoveFileTransactedA
+            MoveFileTransacted = kernel32.MoveFileTransactedW
             MOVEFILE_REPLACE_EXISTING = 1
         except (WindowsError, AttributeError):
             CreateTransaction = None
             try:
-                MoveFileEx = kernel32.MoveFileExA
+                MoveFileEx = kernel32.MoveFileExW
             except (WindowsError, AttributeError):
                 pass
 
@@ -57,6 +57,8 @@ if sys.platform == "win32":
 def win_atomic_mv(src, dst):
     """ Try to move src to dst as atomically as possible, overriding dst
     if it exists. """
+    src = unicode(src)
+    dst = unicode(dst)
     if CreateTransaction is None:
         if MoveFileEx is not None:
             # Fall back to MoveFileEx which is not guaranteed to be
