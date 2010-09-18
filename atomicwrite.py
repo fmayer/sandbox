@@ -67,7 +67,7 @@ def win_atomic_mv(src, dst):
         else:
             # Fall back to naive method.
             if os.path.exists(dst):
-                tmp = tempfile.mktemp(dir=os.path.dirname(dst))
+                tmp = tempfile.mktemp(suffix='old', dir=os.path.dirname(dst))
                 os.rename(dst, tmp)
                 try:
                     os.rename(src, dst)
@@ -121,7 +121,7 @@ class AtomicWrite(object):
         # tempfile takes care of the correct umask by specifying
         # the mode attribute.
         tempfd, self.tempname = tempfile.mkstemp(
-            dir=os.path.dirname(name)
+            suffix='new', dir=os.path.dirname(name)
         )
         self.temp = os.fdopen(tempfd, mode)
         self.name = name
@@ -149,6 +149,9 @@ class AtomicWrite(object):
                     os.unlink(self.tempname)
                 # We are not swallowing any errors here.
                 raise
+        else:
+            self.temp.close()
+            os.unlink(self.tempname)
 
 
 __all__ = ['AtomicWrite', 'atomic_mv', 'posix_atomic_mv', 'win_atomic_mv']
