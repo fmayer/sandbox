@@ -48,40 +48,41 @@ def oldstyle(self, name, attr):
             object.__setattr__(self, name, attr)
 
 
-class A(object):
-    __setattr__ = oldstyle
+if __name__ == '__main__':
+    class A(object):
+        __setattr__ = oldstyle
+        
+        def __int__(self):
+            return 2
     
-    def __int__(self):
-        return 2
-
-
-a = A()
-print int(a)
-assert int(a) == 2
-a.__int__ = lambda: 5
-print int(a)
-assert int(a) == 5
-
-def sattr(name, attr):
-    print name, attr
-
-
-a.__setattr__ = sattr
-
-# Replace __setattr__ and verify it has an effect.
-print a.__setattr__
-a.b = 1
-
-print
-
-class B(object):
-    def __int__(self):
-        return 2
-
-
-b = B()
-print int(b)
-assert int(b) == 2
-b.__int__ = lambda: 5
-print int(b)
-assert int(b) == 2
+    
+    a = A()
+    print int(a)
+    assert int(a) == 2
+    a.__int__ = lambda: 5
+    print int(a)
+    assert int(a) == 5
+    
+    def sattr(name, attr):
+        print name, attr
+    
+    
+    a.__setattr__ = sattr
+    
+    # Replace __setattr__ and verify it has an effect.
+    print a.__setattr__
+    a.b = 1
+    
+    print
+    
+    class B(object):
+        def __int__(self):
+            return 2
+    
+    
+    b = B()
+    print int(b)
+    assert int(b) == 2
+    b.__int__ = lambda: 5
+    print int(b)
+    assert int(b) == 2
