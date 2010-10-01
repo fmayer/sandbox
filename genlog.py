@@ -49,7 +49,7 @@ class Wrap(object):
         return super(Wrapper, self).__getattr__(name)
     
     def log(self, n):
-        return getattr(self, 'log' + n)
+        return getattr(self, 'log' + str(n))
 
 
 #: To be used as `from genlog import wrap as mlog` or equivalent.

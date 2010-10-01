@@ -20,16 +20,21 @@
 
 import math
 
-def nth(x, n, digits=1):
+from genlog import wrap as mlog
+
+
+def nth(x, n, digits=1, system=10):
     if n < 0:
-        return int(x / (10 ** (abs(n) - 1))) % 10 ** digits
+        return int(x / (system ** (abs(n) - 1))) % system ** digits
     else:
-        return int(x / (10 ** int(math.log10(x) - n))) % 10 ** digits
+        return int(
+            x / (system ** int(mlog.log(system)(x) - n))
+            ) % system ** digits
 
 
-def slice(x, i, j):
+def slice(x, i, j, system=10):
     if i < 0 and j >= 0:
-        i = int(math.log10(x)) + 2 + i
+        i = int(mlog.log(system)(x)) + 2 + i
     elif j < 0 and i >= 0:
-        j = int(math.log10(x)) + 2 + j
-    return nth(x, max(i, j - 1), abs(i - j))
+        j = int(mlog.log(system)(x)) + 2 + j
+    return nth(x, max(i, j - 1), abs(i - j), system)
