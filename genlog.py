@@ -30,7 +30,15 @@ def genlog(loge):
     if hasattr(math, loge):
         return getattr(math, loge)
     elif hasattr(cmath, loge):
-        return prot((loge, cmath))
+        prt = prot((loge, cmath))
+        def _fun(x):
+            try:
+                return prt(x)
+            except ctypes.ArgumentError:
+                e = int(loge[3:])
+                return math.log(n, e)
+        
+        return _fun
     else:
         if not loge.startswith('log'):
             raise ValueError
