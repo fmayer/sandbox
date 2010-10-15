@@ -18,6 +18,43 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# Very slow slicing implementation with steps, kept for reference because it
+# worked with arbitrary bases (compared to the much faster method that is
+# converting to a string and then applying the slice on that):
+
+# def numslice(x, start=None, stop=None, step=None, system=10):
+#     if step is not None and step < 0:
+#         if start is None:
+#             start = -1
+#         if stop is None:
+#             stop = 0
+#     else:
+#         if start is None:
+#             start = 0
+#         if stop is None:
+#             stop = int(mlog.log(system)(x)) + 1
+#     
+#     if start < 0:
+#         start = int(mlog.log(system)(x)) + 1 + start
+#     if stop < 0:
+#         stop = int(mlog.log(system)(x)) + 1 + stop
+#     
+#     if step is not None:
+#         len_ = abs((stop - start) / step)
+#         if step < 0:
+#             stop -= 1
+#         else:
+#             len_ -= 1
+#         
+#         res = 0
+#         for n, i in izip(xrange(start, stop, step), countdown(len_)):
+#             res += nth(x, n, system=system) * system ** (i)
+#         return res
+#             
+#     
+#     return nth(x, max(start, stop - 1), abs(start - stop), system)
+
+
 from math import ceil
 from itertools import izip, count
 
