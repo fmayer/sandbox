@@ -18,7 +18,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+from math import ceil
+from itertools import izip, count
+
 from genlog import wrap as mlog
+
+def countdown(n):
+    while True:
+        yield n
+        n -= 1
+
+class awesomeint(long):
+    """ Teach an old int new tricks. """
+    def __init__(self, x, base=10):
+        self.base = base
+    
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            return numslice(self, item.start, item.stop, self.base)
+        else:
+            return nth(self, item, 1, self.base)
 
 
 def nth(x, n, digits=1, system=10):
@@ -30,12 +49,18 @@ def nth(x, n, digits=1, system=10):
             ) % system ** digits
 
 
-def slice(x, start=0, stop=None, system=10):
+def numslice(x, start=None, stop=None, system=10):
+    if start is None:
+        start = 0
     if stop is None:
-        stop = int(mlog.log(system)(x)) + 2
-    
+        stop = int(mlog.log(system)(x)) + 1
+        
     if start < 0 and stop >= 0:
-        start = int(mlog.log(system)(x)) + 2 + start
+        start = int(mlog.log(system)(x)) + 1 + start
     elif stop < 0 and start >= 0:
-        stop = int(mlog.log(system)(x)) + 2 + stop
+        stop = int(mlog.log(system)(x)) + 1 + stop
+    
+    if stop < start:
+        raise ValueError
+    
     return nth(x, max(start, stop - 1), abs(start - stop), system)
