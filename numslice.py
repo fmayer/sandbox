@@ -30,9 +30,12 @@ def nth(x, n, digits=1, system=10):
             ) % system ** digits
 
 
-def slice(x, i, j, system=10):
-    if i < 0 and j >= 0:
-        i = int(mlog.log(system)(x)) + 2 + i
-    elif j < 0 and i >= 0:
-        j = int(mlog.log(system)(x)) + 2 + j
-    return nth(x, max(i, j - 1), abs(i - j), system)
+def slice(x, start, stop=None, system=10):
+    if stop is None:
+        stop = int(mlog.log(system)(x)) + 2
+    
+    if start < 0 and stop >= 0:
+        start = int(mlog.log(system)(x)) + 2 + start
+    elif stop < 0 and start >= 0:
+        stop = int(mlog.log(system)(x)) + 2 + stop
+    return nth(x, max(start, stop - 1), abs(start - stop), system)
