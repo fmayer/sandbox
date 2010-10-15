@@ -30,7 +30,7 @@ def nth(x, n, digits=1, system=10):
             ) % system ** digits
 
 
-def slice(x, start, stop=None, system=10):
+def slice(x, start=0, stop=None, system=10):
     if stop is None:
         stop = int(mlog.log(system)(x)) + 2
     
