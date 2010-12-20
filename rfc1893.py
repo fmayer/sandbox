@@ -19,7 +19,6 @@
 # THE SOFTWARE.
 
 import os
-import csv
 import sys
 import email
 import optparse
