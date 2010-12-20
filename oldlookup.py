@@ -45,7 +45,7 @@ def oldstyle(self, name, attr):
             # magic set.
             self.__setattr__(name, attr)
         else:
-            object.__setattr__(self, name, attr)
+            super(self.__class__, self).__setattr__(name, attr)
 
 
 if __name__ == '__main__':
