@@ -30,10 +30,7 @@ def conv_dec(number, base):
 
 
 def bitrange(start, stop):
-    bitmap = 0
-    for bit in xrange(start, stop):
-        bitmap |= 1 << bit
-    return bitmap
+    return ((1 << stop) - 1) ^ ((1 << start) - 1)
 
 
 class BitSet(object):
