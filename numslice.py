@@ -72,6 +72,8 @@ class awesomeint(long):
     
     def __getitem__(self, item):
         if isinstance(item, slice):
+            if item.step is not None:
+                raise ValueError
             return numslice(self, item.start, item.stop, self.base)
         else:
             return nth(self, item, 1, self.base)
