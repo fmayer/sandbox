@@ -219,14 +219,17 @@ class DispatchNode(object):
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
-            children = BitMapDispatch()
+            children = ListDispatch([NULLNODE for _ in xrange(BRANCH)])
         self.children = children
     
     def assoc(self, hsh, shift, node):
         rlv = relevant(hsh, shift)
         return DispatchNode(
             self.children.replace(
-                rlv, self.children.get(rlv, NULLNODE).assoc(hsh, shift + SHIFT, node)
+                rlv,
+                self.children.get(rlv, NULLNODE).assoc(
+                    hsh, shift + SHIFT, node
+                )
             )
         )
     
