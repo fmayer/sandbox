@@ -31,6 +31,7 @@ def bit_count(integer):
 
 
 class NullNode(object):
+    __slots__ = []
     """ Dummy node being the leaf of branches that have no entries. """
     def assoc(self, hsh, shift, node):
         """ Because there currently no node, the new node
@@ -147,9 +148,11 @@ class HashCollisionNode(object):
         return DispatchNode.make(shift, [self, node])        
     
     def without(self, hsh, shift, key):
-        return HashCollisionNode(
-            [node for node in self.children if node.key != key]
-        )
+        newchildren = [node for node in self.children if node.key != key]
+        if not newchildren:
+            return NULLNODE
+        
+        return HashCollisionNode(newchildren)
     
     def __iter__(self):
         for node in self.children:
@@ -169,13 +172,16 @@ class HashCollisionNode(object):
 
 class ListDispatch(object):
     __slots__ = ['items']
-    def __init__(self, items=None):
+    sentinel = object()
+    
+    def __init__(self, nitems=None, items=None):
         if items is None:
-            items = []
+            items = [self.sentinel for _ in xrange(nitems)]
         self.items = items
     
     def replace(self, key, item):
         return ListDispatch(
+            None,
             self.items[:key] +
             [item] +
             self.items[key + 1:]
@@ -185,21 +191,32 @@ class ListDispatch(object):
         self.items[key] = item
     
     def __getitem__(self, key):
-        return self.items[key]
+        value = self.items[key]
+        if value is self.sentinel:
+            raise KeyError
+        return value
     
     def get(self, key, default):
-        return self[key]
+        value = self.items[key]
+        if value is not self.sentinel:
+            return value
+        return default
+    
+    def remove(self, key):
+        return self.replace(key, self.sentinel)
+
+    def _iremove(self, key):
+        return self._ireplace(key, self.sentinel)
     
     def __iter__(self):
-        return iter(self.items)
+        return (item for item in self.items if item is not self.sentinel)
 
 
 class BitMapDispatch(object):
     __slots__ = ['bitmap', 'default', 'items']
-    def __init__(self, bitmap=0, default=None, items=None):
+    def __init__(self, bitmap=0, items=None):
         if items is None:
             items = []
-        self.default = default
         self.bitmap = bitmap
         self.items = items
     
@@ -208,7 +225,7 @@ class BitMapDispatch(object):
         idx = self.bitmap | 1 << key
         key = bit_count(idx & ((1 << key) - 1))
         return BitMapDispatch(
-            idx, self.default,
+            idx,
             self.items[:key] + [item] + self.items[key+notnew:]
         )
     
@@ -224,10 +241,21 @@ class BitMapDispatch(object):
             self.items.insert(key, item)
     
     def get(self, key, default=None):
-        try:
-            return self[key]
-        except KeyError:
+        if not self.bitmap & 1 << key:
             return default
+        return self.items[bit_count(self.bitmap & ((1 << key) - 1))]
+    
+    def remove(self, key):
+        idx = bit_count(self.bitmap & ((1 << key) - 1))
+        return BitMapDispatch(
+            self.bitmap & ~(1 << key),
+            self.items[:idx] + self.items[idx+1:]
+        )
+    
+    def _iremove(self, key):
+        idx = bit_count(self.bitmap & ((1 << key) - 1))
+        self.bitmap &= ~(1 << key)
+        self.items.pop(idx)
     
     def __getitem__(self, key):
         if not self.bitmap & 1 << key:
@@ -241,13 +269,17 @@ class BitMapDispatch(object):
     
     def __iter__(self):
         return iter(self.items)
+    
+    def __nonzero__(self):
+        return bool(self.items)
 
 
 class DispatchNode(object):
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
-            children = ListDispatch([NULLNODE for _ in xrange(BRANCH)])
+            children = ListDispatch(BRANCH)
+        
         self.children = children
     
     def assoc(self, hsh, shift, node):
@@ -283,10 +315,16 @@ class DispatchNode(object):
     
     def without(self, hsh, shift, key):
         rlv = relevant(hsh, shift)
+        newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
+        if newchild is NULLNODE:
+            newchildren = self.children.remove(rlv)
+            if not newchildren:
+                return NULLNODE
+        
         return DispatchNode(
             self.children.replace(
                 rlv, 
-                self.children[rlv].without(hsh, shift + SHIFT, key)
+                newchild
             )
         )
     
