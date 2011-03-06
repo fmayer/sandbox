@@ -13,42 +13,56 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 SHIFT = 5
-BMAP = (1 << 5) - 1
-BRANCH = 32
+BMAP = (1 << SHIFT) - 1
+BRANCH = 2 ** SHIFT
 
 def relevant(hsh, shift):
+    """ Return the relevant part of the hsh on the level shift. """
     return hsh >> shift & BMAP
 
 
-def bit_count(int_type):
+def bit_count(integer):
+    """ Count set bits in integer. """
     count = 0
-    while int_type:
-        int_type &= int_type - 1
+    while integer:
+        integer &= integer - 1
         count += 1
     return count
 
 
 class NullNode(object):
+    """ Dummy node being the leaf of branches that have no entries. """
     def assoc(self, hsh, shift, node):
+        """ Because there currently no node, the new node
+        is the node to be added. """
         return node
     
     _iassoc = assoc
     
     def get(self, hsh, shift, key):
+        """ There is no entry with the searched key because the hash leads
+        to a branch ending in a NullNode. """
         raise KeyError(key)
     
     def without(self, hsh, shift, key):
-        return self
+        """ There is no entry with the key to be removed because the hash leads
+        to a branch ending in a NullNode. """
+        raise KeyError(key)
     
     def __iter__(self):
+        """ There are no keys contained in a NullNode. """
         return iter([])
     
+    # Likewise, there are no values and items in a NullNode.
     iteritems = itervalues = __iter__
 
+#: We only need one instance of a NullNode because it does not contain
+#  any data.
 NULLNODE = NullNode()
 
 
 class LeafNode(object):
+    """ A LeafNode contains the actual key-value mapping. """
     __slots__ = ['key', 'value', 'hsh']
     def __init__(self, key, value):
         self.key = key
@@ -56,11 +70,18 @@ class LeafNode(object):
         self.hsh = hash(key)
     
     def get(self, hsh, shift, key):
+        """ If the key does not match the key of the LeafNode,
+        raise a KeyError, otherwise return the value. """
         if key != self.key:
             raise KeyError(key)
         return self.value
     
     def assoc(self, hsh, shift, node):
+        """ If there is a hash-collision, return a HashCollisionNode,
+        otherwise return a DispatchNode dispatching depending on the
+        current level (if the two hashes only differ at a higher-level,
+        DispatchNode.make will return a DispatchNode that contains a
+        DispatchNode etc. up until the necessary depth. """
         if node.key == self.key:
             return node
         
@@ -71,6 +92,7 @@ class LeafNode(object):
         return DispatchNode.make(shift, [self, node])
     
     def _iassoc(self, hsh, shift, node):
+        """ Like assoc but modify the current Node. Use with care. """
         if node.key == self.key:
             self.key = node.key
             self.value = node.value
@@ -83,6 +105,10 @@ class LeafNode(object):
         return DispatchNode.make(shift, [self, node])        
     
     def without(self, hsh, shift, key):
+        """ If the key matches the key of this LeafNode, returning NULLNODE
+        will remove the Node from the map. Otherwise raise a KeyError. """
+        if key != self.key:
+            raise KeyError(key)
         return NULLNODE
     
     def __iter__(self):
@@ -96,6 +122,8 @@ class LeafNode(object):
 
 
 class HashCollisionNode(object):
+    """ If hashes of two keys collide, store them in a list and when a key
+    is searched, iterate over that list and find the appropriate key. """
     __slots__ = ['nodes']
     def __init__(self, nodes):
         self.children = nodes
@@ -237,7 +265,7 @@ class DispatchNode(object):
         rlv = relevant(hsh, shift)
         self.children._ireplace(
             rlv, 
-            self.children.get(rlv, NULLNODE).assoc(hsh, shift + SHIFT, node)
+            self.children.get(rlv, NULLNODE)._iassoc(hsh, shift + SHIFT, node)
         )
         return self
     
@@ -311,9 +339,16 @@ class PersistentTreeMap(object):
     
     def itervalues(self):
         return self.root.itervalues()
+    
+    @classmethod
+    def from_dict(cls, dct):
+        mp = cls()
+        for key, value in dct:
+            mp = mp._iassoc(key, value)
+        return mp
 
 
-def main():
+def main():    
     mp = PersistentTreeMap()
     mp1 = mp.assoc('a', 'hello')
     assert mp1['a'] == 'hello'
@@ -336,22 +371,48 @@ def main():
     
     import os
     import time
-    s = time.time()
+    # Prevent expensive look-up in loop, hence the from-import.
+    from copy import copy
+
     mp = PersistentTreeMap()
     for _ in xrange(22500):
         one, other = os.urandom(20), os.urandom(25)
         mp = mp._iassoc(one, other)
-    print time.time() - s
+        assert mp[one] == other
+    
+    s = time.time()
+    mp = PersistentTreeMap()
+    for _ in xrange(22500):
+        one, other = os.urandom(20), os.urandom(25)
+        mp2 = mp.assoc(one, other)
+        try:
+            mp[one]
+        except KeyError:
+            assert True
+        else:
+            assert False
+        mp = mp2
+        assert mp[one] == other
+    print 'PersistentHashMap:', time.time() - s
     assert mp[one] == other
     # This /may/ actually fail if we are unlucky, but it's a good start.
     assert len(list(iter(mp))) == 22500
-    return
+    
     s = time.time()
     dct = dict()
     for _ in xrange(22500):
         one, other = os.urandom(20), os.urandom(25)
-        dct[one] = other
-    print time.time() - s
+        dct2 = copy(dct)
+        dct2[one] = other
+        try:
+            dct[one]
+        except KeyError:
+            assert True
+        else:
+            assert False
+        dct = dct2
+        assert dct[one] == other
+    print 'Builtin dict:', time.time() - s
 
 
 if __name__ == '__main__':
