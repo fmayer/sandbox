@@ -34,31 +34,32 @@ class NullNode(object):
     __slots__ = []
     """ Dummy node being the leaf of branches that have no entries. """
     def assoc(self, hsh, shift, node):
-        """ Because there currently no node, the new node
-        is the node to be added. """
+        # Because there currently no node, the new node
+        # is the node to be added.
         return node
     
     _iassoc = assoc
     
     def get(self, hsh, shift, key):
-        """ There is no entry with the searched key because the hash leads
-        to a branch ending in a NullNode. """
+        # There is no entry with the searched key because the hash leads
+        # to a branch ending in a NullNode.
         raise KeyError(key)
     
     def without(self, hsh, shift, key):
-        """ There is no entry with the key to be removed because the hash leads
-        to a branch ending in a NullNode. """
+        # There is no entry with the key to be removed because the hash leads
+        # to a branch ending in a NullNode.
         raise KeyError(key)
     
     def __iter__(self):
-        """ There are no keys contained in a NullNode. """
+        # There are no keys contained in a NullNode. Hence, an empty
+        # iterator is returned.
         return iter([])
     
     # Likewise, there are no values and items in a NullNode.
     iteritems = itervalues = __iter__
 
-#: We only need one instance of a NullNode because it does not contain
-#  any data.
+# We only need one instance of a NullNode because it does not contain
+# any data.
 NULLNODE = NullNode()
 
 
@@ -71,18 +72,19 @@ class LeafNode(object):
         self.hsh = hash(key)
     
     def get(self, hsh, shift, key):
-        """ If the key does not match the key of the LeafNode,
-        raise a KeyError, otherwise return the value. """
+        # If the key does not match the key of the LeafNode, thus the hash
+        # matches to the current level, but it is not the correct node,
+        # raise a KeyError, otherwise return the value.
         if key != self.key:
             raise KeyError(key)
         return self.value
     
     def assoc(self, hsh, shift, node):
-        """ If there is a hash-collision, return a HashCollisionNode,
-        otherwise return a DispatchNode dispatching depending on the
-        current level (if the two hashes only differ at a higher-level,
-        DispatchNode.make will return a DispatchNode that contains a
-        DispatchNode etc. up until the necessary depth. """
+        # If there is a hash-collision, return a HashCollisionNode,
+        # otherwise return a DispatchNode dispatching depending on the
+        # current level (if the two hashes only differ at a higher-level,
+        # DispatchNode.make will return a DispatchNode that contains a
+        # DispatchNode etc. up until the necessary depth.
         if node.key == self.key:
             return node
         
@@ -106,8 +108,8 @@ class LeafNode(object):
         return DispatchNode.make(shift, [self, node])        
     
     def without(self, hsh, shift, key):
-        """ If the key matches the key of this LeafNode, returning NULLNODE
-        will remove the Node from the map. Otherwise raise a KeyError. """
+        # If the key matches the key of this LeafNode, returning NULLNODE
+        # will remove the Node from the map. Otherwise raise a KeyError.
         if key != self.key:
             raise KeyError(key)
         return NULLNODE
@@ -131,17 +133,17 @@ class HashCollisionNode(object):
         self.hsh = hash(nodes[0].hsh)
     
     def get(self, hsh, shift, key):
-        """ To get the child we want we need to iterate over all possible ones.
-        The contents of children are always LeafNodes, so we can safely access
-        the key member. """
+        # To get the child we want we need to iterate over all possible ones.
+        # The contents of children are always LeafNodes, so we can safely access
+        # the key member.
         for node in self.children:
             if key == node.key:
                 return node.value
         raise KeyError(key)
     
     def assoc(self, hsh, shift, node):
-        """ If we have yet another key with a colliding key, add it to the
-        children, otherwise return a DispatchNode. """
+        # If we have yet another key with a colliding key, add it to the
+        # children, otherwise return a DispatchNode.
         if hsh == self.hsh:
             return HashCollisionNode(self.children + [node])
         return DispatchNode.make(shift, [self, node])
