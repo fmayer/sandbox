@@ -30,9 +30,47 @@ def bit_count(integer):
     return count
 
 
+def doc(docstring):
+    """ Decorator to set docstring of function to docstring. """
+    def deco(fn):
+        """ Implementation detail. """
+        fn.__doc__ = docstring
+        return fn
+    return deco
+
+
+ASSOC = "\n".join([
+    "Add LeafNode node whose key's hash is hsh to the node or its children. ",
+    "shift refers to the current level in the tree, which mus be a multiple ",
+    "of the global constant BRANCH. If a node with the same key already ",
+    "exists, override it.",
+])
+
+IASSOC = "\n".join([
+    "Modify so that the LeafNode whose key's hash is hsh is added to it. ",
+    "USE WITH CAUTION. ",
+    "shift refers to the current level in the tree, which mus be a multiple ",
+    "of the global constant BRANCH. If a node with the same key already ",
+    "exists, override it.",
+])
+
+GET = "\n".join([
+    "Get value of the LeafNode with key whose hash is hsh in the subtree. ",
+    "shift refers to the current level in the tree, which mus be a multiple ",
+    "of the global constant BRANCH.",
+])
+
+WITHOUT = "\n".join([
+    "Remove LeafNode with key whose hash is hsh from the subtree. ",
+    "shift refers to the current level in the tree, which mus be a multiple ",
+    "of the global constant BRANCH.",
+])
+
+
 class NullNode(object):
-    __slots__ = []
     """ Dummy node being the leaf of branches that have no entries. """
+    __slots__ = []
+    @doc(ASSOC)
     def assoc(self, hsh, shift, node):
         # Because there currently no node, the new node
         # is the node to be added.
@@ -40,11 +78,13 @@ class NullNode(object):
     
     _iassoc = assoc
     
+    @doc(GET)
     def get(self, hsh, shift, key):
         # There is no entry with the searched key because the hash leads
         # to a branch ending in a NullNode.
         raise KeyError(key)
     
+    @doc(WITHOUT)
     def without(self, hsh, shift, key):
         # There is no entry with the key to be removed because the hash leads
         # to a branch ending in a NullNode.
@@ -71,6 +111,7 @@ class LeafNode(object):
         self.value = value
         self.hsh = hash(key)
     
+    @doc(GET)
     def get(self, hsh, shift, key):
         # If the key does not match the key of the LeafNode, thus the hash
         # matches to the current level, but it is not the correct node,
@@ -79,6 +120,7 @@ class LeafNode(object):
             raise KeyError(key)
         return self.value
     
+    @doc(ASSOC)
     def assoc(self, hsh, shift, node):
         # If there is a hash-collision, return a HashCollisionNode,
         # otherwise return a DispatchNode dispatching depending on the
@@ -94,6 +136,7 @@ class LeafNode(object):
             )
         return DispatchNode.make(shift, [self, node])
     
+    @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
         """ Like assoc but modify the current Node. Use with care. """
         if node.key == self.key:
@@ -107,6 +150,7 @@ class LeafNode(object):
             )
         return DispatchNode.make(shift, [self, node])        
     
+    @doc(WITHOUT)
     def without(self, hsh, shift, key):
         # If the key matches the key of this LeafNode, returning NULLNODE
         # will remove the Node from the map. Otherwise raise a KeyError.
@@ -132,6 +176,7 @@ class HashCollisionNode(object):
         self.children = nodes
         self.hsh = hash(nodes[0].hsh)
     
+    @doc(GET)
     def get(self, hsh, shift, key):
         # To get the child we want we need to iterate over all possible ones.
         # The contents of children are always LeafNodes, so we can safely access
@@ -141,6 +186,7 @@ class HashCollisionNode(object):
                 return node.value
         raise KeyError(key)
     
+    @doc(ASSOC)
     def assoc(self, hsh, shift, node):
         # If we have yet another key with a colliding key, add it to the
         # children, otherwise return a DispatchNode.
@@ -148,6 +194,7 @@ class HashCollisionNode(object):
             return HashCollisionNode(self.children + [node])
         return DispatchNode.make(shift, [self, node])
     
+    @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
         """ Like assoc but modify the current Node. Use with care. """
         if hsh == self.hsh:
@@ -155,6 +202,7 @@ class HashCollisionNode(object):
             return self
         return DispatchNode.make(shift, [self, node])        
     
+    @doc(WITHOUT)
     def without(self, hsh, shift, key):
         """  Remove the LeafNode with key from the children. If it is not
         present, raise a KeyError. """
@@ -295,6 +343,7 @@ class DispatchNode(object):
         
         self.children = children
     
+    @doc(ASSOC)
     def assoc(self, hsh, shift, node):
         rlv = relevant(hsh, shift)
         return DispatchNode(
@@ -306,6 +355,7 @@ class DispatchNode(object):
             )
         )
     
+    @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
         rlv = relevant(hsh, shift)
         self.children._ireplace(
@@ -321,11 +371,13 @@ class DispatchNode(object):
             dsp._iassoc(elem.hsh, shift, elem)
         return dsp
     
+    @doc(GET)
     def get(self, hsh, shift, key):
         return self.children[relevant(hsh, shift)].get(
             hsh, shift + SHIFT, key
         )
     
+    @doc(WITHOUT)
     def without(self, hsh, shift, key):
         rlv = relevant(hsh, shift)
         newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
