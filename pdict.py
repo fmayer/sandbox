@@ -257,6 +257,11 @@ class HashCollisionNode(object):
 
 
 class ListDispatch(object):
+    """ Light weight dictionary like object for a little amount of items.
+    Only feasable for a little amount of items as a list of length nitems 
+    is always stored.
+    
+    Only accepts integers as keys. """
     __slots__ = ['items']
     sentinel = object()
     
@@ -266,6 +271,8 @@ class ListDispatch(object):
         self.items = items
     
     def replace(self, key, item):
+        """ Return a new ListDispatch with the the keyth item replaced
+        with item. """
         return ListDispatch(
             None,
             self.items[:key] +
@@ -274,6 +281,9 @@ class ListDispatch(object):
         )
     
     def _ireplace(self, key, item):
+        """ Replace keyth item with item.
+        
+        USE WITH CAUTION. """
         self.items[key] = item
     
     def __getitem__(self, key):
@@ -283,16 +293,22 @@ class ListDispatch(object):
         return value
     
     def get(self, key, default):
+        """ Get keyth item. If it is not present, return default. """
         value = self.items[key]
         if value is not self.sentinel:
             return value
         return default
     
     def remove(self, key):
+        """ Return new ListDispatch with keyth item removed.
+        Will not raise KeyError if it was not present. """
         return self.replace(key, self.sentinel)
 
     def _iremove(self, key):
-        return self._ireplace(key, self.sentinel)
+        """ Remove keyth item. Will not raise KeyError if it was not present.
+        
+        USE WITH CAUTION. """
+        self._ireplace(key, self.sentinel)
     
     def __iter__(self):
         return (item for item in self.items if item is not self.sentinel)
@@ -301,6 +317,7 @@ class ListDispatch(object):
 class BitMapDispatch(object):
     """ Light weight dictionary like object for a little amount of items.
     Best used for as most as many items as an integer has bits (usually 32).
+    Only accepts integers as keys.
     
     The items are stored in a list and whenever an item is added, the bitmap
     is ORed with (1 << key) so that the keyth bit is set.
@@ -315,6 +332,8 @@ class BitMapDispatch(object):
         self.items = items
     
     def replace(self, key, item):
+        """ Return a new BitMapDispatch with the the keyth item replaced
+        with item. """
         # If the item already existed in the list, we need to replace it.
         # Otherwise, it will be added to the list at the appropriate
         # position.
@@ -330,6 +349,9 @@ class BitMapDispatch(object):
         )
     
     def _ireplace(self, key, item):
+        """ Replace keyth item with item.
+        
+        USE WITH CAUTION. """
         notnew = bool(self.bitmap & 1 << key)
         self.bitmap |= 1 << key
         idx = bit_count(self.bitmap & ((1 << key) - 1))
@@ -341,11 +363,14 @@ class BitMapDispatch(object):
             self.items.insert(idx, item)
     
     def get(self, key, default=None):
+        """ Get keyth item. If it is not present, return default. """
         if not self.bitmap & 1 << key:
             return default
         return self.items[bit_count(self.bitmap & ((1 << key) - 1))]
     
     def remove(self, key):
+        """ Return new BitMapDispatch with keyth item removed.
+        Will not raise KeyError if it was not present. """
         idx = bit_count(self.bitmap & ((1 << key) - 1))
         return BitMapDispatch(
             # Unset the keyth bit.
@@ -355,6 +380,9 @@ class BitMapDispatch(object):
         )
     
     def _iremove(self, key):
+        """ Remove keyth item. Will not raise KeyError if it was not present.
+        
+        USE WITH CAUTION. """
         idx = bit_count(self.bitmap & ((1 << key) - 1))
         self.bitmap &= ~(1 << key)
         self.items.pop(idx)
@@ -365,6 +393,8 @@ class BitMapDispatch(object):
         return self.items[bit_count(self.bitmap & ((1 << key) - 1))]
     
     def to_listdispatch(self, nitems):
+        """ Return ListDispatch with the same key to value connections as this
+        BitMapDispatch. """
         return ListDispatch(
             [self[n] for n in xrange(nitems)]
         )
@@ -448,14 +478,11 @@ class DispatchNode(object):
         rlv = relevant(hsh, shift)
         newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
         if newchild is NULLNODE:
-            newchildren = self.children.remove(rlv)
+            self.children._iremove(rlv)
             if not newchildren:
                 return NULLNODE
         else:
-            newchildren = self.children.replace(
-                rlv, 
-                newchild
-            )
+            self.children._ireplace(rlv, newchild)
         
         self.children = newchildren
         return self
