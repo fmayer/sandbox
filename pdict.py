@@ -76,6 +76,8 @@ class NullNode(object):
         # is the node to be added.
         return node
     
+    # The NullNode does not need to be modified if a new association is
+    # created because it only returns the new node, hence _iassoc = assoc.
     _iassoc = assoc
     
     @doc(GET)
@@ -89,6 +91,8 @@ class NullNode(object):
         # There is no entry with the key to be removed because the hash leads
         # to a branch ending in a NullNode.
         raise KeyError(key)
+    
+    _iwithout = without
     
     def __iter__(self):
         # There are no keys contained in a NullNode. Hence, an empty
@@ -138,7 +142,6 @@ class LeafNode(object):
     
     @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
-        """ Like assoc but modify the current Node. Use with care. """
         if node.key == self.key:
             self.key = node.key
             self.value = node.value
@@ -157,6 +160,8 @@ class LeafNode(object):
         if key != self.key:
             raise KeyError(key)
         return NULLNODE
+    
+    _iwithout = without
     
     def __iter__(self):
         yield self.key
@@ -196,7 +201,6 @@ class HashCollisionNode(object):
     
     @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
-        """ Like assoc but modify the current Node. Use with care. """
         if hsh == self.hsh:
             self.children.append(node)
             return self
@@ -204,8 +208,9 @@ class HashCollisionNode(object):
     
     @doc(WITHOUT)
     def without(self, hsh, shift, key):
-        """  Remove the LeafNode with key from the children. If it is not
-        present, raise a KeyError. """
+        # Remove the node whose key is key from the children. If it was the
+        # last child, return NULLNODE. If there was no member with a
+        # matching key, raise KeyError.
         newchildren = [node for node in self.children if node.key != key]
         if not newchildren:
             return NULLNODE
@@ -214,6 +219,17 @@ class HashCollisionNode(object):
             raise KeyError(key)
         
         return HashCollisionNode(newchildren)
+    
+    def _iwithout(self, hsh, shift, key):
+        newchildren = [node for node in self.children if node.key != key]
+        if not newchildren:
+            return NULLNODE
+        
+        if newchildren == self.children:
+            raise KeyError(key)
+        
+        self.children = newchildren
+        return self
     
     def __iter__(self):
         for node in self.children:
@@ -254,7 +270,7 @@ class ListDispatch(object):
     def __getitem__(self, key):
         value = self.items[key]
         if value is self.sentinel:
-            raise KeyError
+            raise KeyError(key)
         return value
     
     def get(self, key, default):
@@ -320,7 +336,7 @@ class BitMapDispatch(object):
     
     def __getitem__(self, key):
         if not self.bitmap & 1 << key:
-            raise KeyError
+            raise KeyError(key)
         return self.items[bit_count(self.bitmap & ((1 << key) - 1))]
     
     def to_listdispatch(self, nitems):
@@ -373,7 +389,7 @@ class DispatchNode(object):
     
     @doc(GET)
     def get(self, hsh, shift, key):
-        return self.children[relevant(hsh, shift)].get(
+        return self.children.get(relevant(hsh, shift), NULLNODE).get(
             hsh, shift + SHIFT, key
         )
     
@@ -385,13 +401,29 @@ class DispatchNode(object):
             newchildren = self.children.remove(rlv)
             if not newchildren:
                 return NULLNODE
-        
-        return DispatchNode(
-            self.children.replace(
+        else:
+            newchildren = self.children.replace(
                 rlv, 
                 newchild
             )
-        )
+        
+        return DispatchNode(newchildren)
+    
+    def _iwithout(self, hsh, shift, key):
+        rlv = relevant(hsh, shift)
+        newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
+        if newchild is NULLNODE:
+            newchildren = self.children.remove(rlv)
+            if not newchildren:
+                return NULLNODE
+        else:
+            newchildren = self.children.replace(
+                rlv, 
+                newchild
+            )
+        
+        self.children = newchildren
+        return self
     
     def __iter__(self):
         for child in self.children:
