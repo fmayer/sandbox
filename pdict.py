@@ -125,32 +125,43 @@ class LeafNode(object):
 class HashCollisionNode(object):
     """ If hashes of two keys collide, store them in a list and when a key
     is searched, iterate over that list and find the appropriate key. """
-    __slots__ = ['nodes']
+    __slots__ = ['children']
     def __init__(self, nodes):
         self.children = nodes
         self.hsh = hash(nodes[0].hsh)
     
     def get(self, hsh, shift, key):
+        """ To get the child we want we need to iterate over all possible ones.
+        The contents of children are always LeafNodes, so we can safely access
+        the key member. """
         for node in self.children:
             if key == node.key:
                 return node.value
         raise KeyError(key)
     
     def assoc(self, hsh, shift, node):
+        """ If we have yet another key with a colliding key, add it to the
+        children, otherwise return a DispatchNode. """
         if hsh == self.hsh:
             return HashCollisionNode(self.children + [node])
         return DispatchNode.make(shift, [self, node])
     
     def _iassoc(self, hsh, shift, node):
+        """ Like assoc but modify the current Node. Use with care. """
         if hsh == self.hsh:
             self.children.append(node)
             return self
         return DispatchNode.make(shift, [self, node])        
     
     def without(self, hsh, shift, key):
+        """  Remove the LeafNode with key from the children. If it is not
+        present, raise a KeyError. """
         newchildren = [node for node in self.children if node.key != key]
         if not newchildren:
             return NULLNODE
+        
+        if newchildren == self.children:
+            raise KeyError(key)
         
         return HashCollisionNode(newchildren)
     
