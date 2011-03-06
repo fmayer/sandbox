@@ -159,6 +159,9 @@ class ListDispatch(object):
     def __getitem__(self, key):
         return self.items[key]
     
+    def get(self, key, default):
+        return self[key]
+    
     def __iter__(self):
         return iter(self.items)
 
@@ -173,24 +176,35 @@ class BitMapDispatch(object):
         self.items = items
     
     def replace(self, key, item):
+        notnew = bool(self.bitmap & 1 << key)
         idx = self.bitmap | 1 << key
-        key = bit_count(idx & (key - 1))
+        key = bit_count(idx & ((1 << key) - 1))
         return BitMapDispatch(
-            idx, self.default, self.items[:key] + [item] + self.items[key:]
+            idx, self.default,
+            self.items[:key] + [item] + self.items[key+notnew:]
         )
     
     def _ireplace(self, key, item):
+        notnew = bool(self.bitmap & 1 << key)
         self.bitmap |= 1 << key
-        key = bit_count(self.bitmap & (key - 1))
+        key = bit_count(self.bitmap & ((1 << key) - 1))
         if key == len(self.items):
             self.items.append(item)
-        else:
+        elif notnew:
             self.items[key] = item
+        else:
+            self.items.insert(key, item)
+    
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
     
     def __getitem__(self, key):
         if not self.bitmap & 1 << key:
-            return self.default
-        return self.items[bit_count(self.bitmap & ((1 << key + 1) - 1)) - 1]
+            raise KeyError
+        return self.items[bit_count(self.bitmap & ((1 << key) - 1))]
     
     def to_listdispatch(self, nitems):
         return ListDispatch(
@@ -205,16 +219,14 @@ class DispatchNode(object):
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
-            children = ListDispatch(
-                [NULLNODE for _ in xrange(BRANCH)]
-            )
+            children = BitMapDispatch()
         self.children = children
     
     def assoc(self, hsh, shift, node):
         rlv = relevant(hsh, shift)
         return DispatchNode(
             self.children.replace(
-                rlv, self.children[rlv].assoc(hsh, shift + SHIFT, node)
+                rlv, self.children.get(rlv, NULLNODE).assoc(hsh, shift + SHIFT, node)
             )
         )
     
@@ -222,7 +234,7 @@ class DispatchNode(object):
         rlv = relevant(hsh, shift)
         self.children._ireplace(
             rlv, 
-            self.children[rlv].assoc(hsh, shift + SHIFT, node)
+            self.children.get(rlv, NULLNODE).assoc(hsh, shift + SHIFT, node)
         )
         return self
     
@@ -298,7 +310,7 @@ class PersistentTreeMap(object):
         return self.root.itervalues()
 
 
-if __name__ == '__main__':
+def main():
     mp = PersistentTreeMap()
     mp1 = mp.assoc('a', 'hello')
     assert mp1['a'] == 'hello'
@@ -330,10 +342,14 @@ if __name__ == '__main__':
     assert mp[one] == other
     # This /may/ actually fail if we are unlucky, but it's a good start.
     assert len(list(iter(mp))) == 22500
-    os._exit(0)
+    return
     s = time.time()
     dct = dict()
     for _ in xrange(22500):
         one, other = os.urandom(20), os.urandom(25)
         dct[one] = other
     print time.time() - s
+
+
+if __name__ == '__main__':
+    main()
