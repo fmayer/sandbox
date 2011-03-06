@@ -512,21 +512,33 @@ class PersistentTreeMap(object):
         return self.root.get(hash(key), 0, key)
     
     def assoc(self, key, value):
+        """ Return copy of self with an association between key and value.
+        May override an existing association. """
         return PersistentTreeMap(
             self.root.assoc(hash(key), 0, LeafNode(key, value))
         )
     
     def _iassoc(self, key, value):
+        """ Update this PersistentTreeMap to contain an association between
+        key and value.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
         return PersistentTreeMap(
             self.root._iassoc(hash(key), 0, LeafNode(key, value))
         )
     
     def without(self, key):
+        """ Return copy of self with key removed. """
         return PersistentTreeMap(
             self.root.without(hash(key), 0, key)
         )
     
     def _iwithout(self, key):
+        """ Remove key.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
         return PersistentTreeMap(
             self.root._iwithout(hash(key), 0, key)
         )
@@ -544,6 +556,7 @@ class PersistentTreeMap(object):
     
     @classmethod
     def from_dict(cls, dct):
+        """ Create PersistentTreeMap from existing dictionary. """
         mp = cls()
         for key, value in dct:
             mp = mp._iassoc(key, value)
