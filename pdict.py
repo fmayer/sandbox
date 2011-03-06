@@ -40,32 +40,38 @@ def doc(docstring):
 
 
 ASSOC = "\n".join([
-    "Add LeafNode node whose key's hash is hsh to the node or its children. ",
-    "shift refers to the current level in the tree, which mus be a multiple ",
-    "of the global constant BRANCH. If a node with the same key already ",
+    "Add LeafNode node whose key's hash is hsh to the node or its children.",
+    "shift refers to the current level in the tree, which must be a multiple",
+    "of the global constant BRANCH. If a node with the same key already",
     "exists, override it.",
 ])
 
 IASSOC = "\n".join([
-    "Modify so that the LeafNode whose key's hash is hsh is added to it. ",
-    "USE WITH CAUTION. ",
-    "shift refers to the current level in the tree, which mus be a multiple ",
-    "of the global constant BRANCH. If a node with the same key already ",
+    "Modify so that the LeafNode whose key's hash is hsh is added to it.",
+    "USE WITH CAUTION.",
+    "shift refers to the current level in the tree, which must be a multiple",
+    "of the global constant BRANCH. If a node with the same key already",
     "exists, override it.",
 ])
 
 GET = "\n".join([
-    "Get value of the LeafNode with key whose hash is hsh in the subtree. ",
-    "shift refers to the current level in the tree, which mus be a multiple ",
+    "Get value of the LeafNode with key whose hash is hsh in the subtree.",
+    "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
 ])
 
 WITHOUT = "\n".join([
-    "Remove LeafNode with key whose hash is hsh from the subtree. ",
-    "shift refers to the current level in the tree, which mus be a multiple ",
+    "Remove LeafNode with key whose hash is hsh from the subtree.",
+    "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
 ])
 
+IWITHOUT = "\n".join([
+    "Modify so that the LeafNode whose key's hash is hsh is removed from it.",
+    "USE WITH CAUTION.",
+    "shift refers to the current level in the tree, which must be a multiple",
+    "of the global constant BRANCH.",
+])
 
 class NullNode(object):
     """ Dummy node being the leaf of branches that have no entries. """
@@ -193,14 +199,16 @@ class HashCollisionNode(object):
     
     @doc(ASSOC)
     def assoc(self, hsh, shift, node):
-        # If we have yet another key with a colliding key, add it to the
-        # children, otherwise return a DispatchNode.
+        # If we have yet another key with a colliding key, return a new node
+        # with it added to the children, otherwise return a DispatchNode.
         if hsh == self.hsh:
             return HashCollisionNode(self.children + [node])
         return DispatchNode.make(shift, [self, node])
     
     @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
+        # If we have yet another key with a colliding key, add it to the
+        # children, otherwise return a DispatchNode.
         if hsh == self.hsh:
             self.children.append(node)
             return self
@@ -220,6 +228,7 @@ class HashCollisionNode(object):
         
         return HashCollisionNode(newchildren)
     
+    @doc(IWITHOUT)
     def _iwithout(self, hsh, shift, key):
         newchildren = [node for node in self.children if node.key != key]
         if not newchildren:
@@ -290,7 +299,15 @@ class ListDispatch(object):
 
 
 class BitMapDispatch(object):
-    __slots__ = ['bitmap', 'default', 'items']
+    """ Light weight dictionary like object for a little amount of items.
+    Best used for as most as many items as an integer has bits (usually 32).
+    
+    The items are stored in a list and whenever an item is added, the bitmap
+    is ORed with (1 << key) so that the keyth bit is set.
+    The amount of set bits before the nth bit is used to find the index of the
+    item referred to by key in the items list.
+    """
+    __slots__ = ['bitmap', 'items']
     def __init__(self, bitmap=0, items=None):
         if items is None:
             items = []
@@ -298,24 +315,30 @@ class BitMapDispatch(object):
         self.items = items
     
     def replace(self, key, item):
+        # If the item already existed in the list, we need to replace it.
+        # Otherwise, it will be added to the list at the appropriate
+        # position.
         notnew = bool(self.bitmap & 1 << key)
-        idx = self.bitmap | 1 << key
-        key = bit_count(idx & ((1 << key) - 1))
+        newmap = self.bitmap | 1 << key
+        idx = bit_count(idx & ((1 << key) - 1))
         return BitMapDispatch(
-            idx,
-            self.items[:key] + [item] + self.items[key+notnew:]
+            newmap,
+            # If notnew is True, the item that is replaced by the new item
+            # is left out, otherwise the new item is inserted. Refer to
+            # _ireplace for a more concise explanation.
+            self.items[:idx] + [item] + self.items[idx+notnew:]
         )
     
     def _ireplace(self, key, item):
         notnew = bool(self.bitmap & 1 << key)
         self.bitmap |= 1 << key
-        key = bit_count(self.bitmap & ((1 << key) - 1))
-        if key == len(self.items):
+        idx = bit_count(self.bitmap & ((1 << key) - 1))
+        if idx == len(self.items):
             self.items.append(item)
         elif notnew:
-            self.items[key] = item
+            self.items[idx] = item
         else:
-            self.items.insert(key, item)
+            self.items.insert(idx, item)
     
     def get(self, key, default=None):
         if not self.bitmap & 1 << key:
@@ -325,7 +348,9 @@ class BitMapDispatch(object):
     def remove(self, key):
         idx = bit_count(self.bitmap & ((1 << key) - 1))
         return BitMapDispatch(
+            # Unset the keyth bit.
             self.bitmap & ~(1 << key),
+            # Leave out the idxth item.
             self.items[:idx] + self.items[idx+1:]
         )
     
@@ -352,6 +377,8 @@ class BitMapDispatch(object):
 
 
 class DispatchNode(object):
+    """ Dispatch to children nodes depending of the hsh value at the
+    current level. """
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
@@ -361,6 +388,9 @@ class DispatchNode(object):
     
     @doc(ASSOC)
     def assoc(self, hsh, shift, node):
+        # We need not check whether the return value of
+        # self.children.get(...).assoc is NULLNODE, because assoc never
+        # returns NULLNODE.
         rlv = relevant(hsh, shift)
         return DispatchNode(
             self.children.replace(
@@ -382,6 +412,8 @@ class DispatchNode(object):
     
     @classmethod
     def make(cls, shift, many):
+        # Because the object we create in this function is not yet exposed
+        # to any other code, we may safely call _iassoc.
         dsp = cls()
         for elem in many:
             dsp._iassoc(elem.hsh, shift, elem)
@@ -398,6 +430,8 @@ class DispatchNode(object):
         rlv = relevant(hsh, shift)
         newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
         if newchild is NULLNODE:
+            # This makes sure no dead nodes remain in the tree after
+            # removing an item.
             newchildren = self.children.remove(rlv)
             if not newchildren:
                 return NULLNODE
@@ -409,6 +443,7 @@ class DispatchNode(object):
         
         return DispatchNode(newchildren)
     
+    @doc(IWITHOUT)
     def _iwithout(self, hsh, shift, key):
         rlv = relevant(hsh, shift)
         newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
@@ -462,6 +497,11 @@ class PersistentTreeMap(object):
     def without(self, key):
         return PersistentTreeMap(
             self.root.without(hash(key), 0, key)
+        )
+    
+    def _iwithout(self, key):
+        return PersistentTreeMap(
+            self.root._iwithout(hash(key), 0, key)
         )
     
     def __iter__(self):
@@ -522,6 +562,12 @@ def main():
         mp2 = mp.assoc(one, other)
         try:
             mp[one]
+        except KeyError:
+            assert True
+        else:
+            assert False
+        try:
+            mp2.without(one)[one]
         except KeyError:
             assert True
         else:
