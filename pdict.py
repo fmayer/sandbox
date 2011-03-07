@@ -16,18 +16,20 @@ SHIFT = 5
 BMAP = (1 << SHIFT) - 1
 BRANCH = 2 ** SHIFT
 
+MAXBITMAPDISPATCH = 16
+
 def relevant(hsh, shift):
     """ Return the relevant part of the hsh on the level shift. """
     return hsh >> shift & BMAP
 
 
-def bit_count(integer):
-    """ Count set bits in integer. """
-    count = 0
-    while integer:
-        integer &= integer - 1
-        count += 1
-    return count
+POPCOUNT_TBL = [0] * (2 ** 16)
+for idx in xrange(2 ** 16):
+    POPCOUNT_TBL[idx] = (idx & 1) + POPCOUNT_TBL[idx >> 1]
+
+def bit_count(v):
+    return (POPCOUNT_TBL[v & 0xffff] +
+            POPCOUNT_TBL[(v >> 16) & 0xffff])
 
 
 def doc(docstring):
@@ -285,6 +287,7 @@ class ListDispatch(object):
         
         USE WITH CAUTION. """
         self.items[key] = item
+        return self
     
     def __getitem__(self, key):
         value = self.items[key]
@@ -302,13 +305,29 @@ class ListDispatch(object):
     def remove(self, key):
         """ Return new ListDispatch with keyth item removed.
         Will not raise KeyError if it was not present. """
+        if len(self.items) <= MAXBITMAPDISPATCH:
+            new = self.to_listdispatch(len(self.items))
+            return new._iremove(key)
+        
         return self.replace(key, self.sentinel)
 
     def _iremove(self, key):
         """ Remove keyth item. Will not raise KeyError if it was not present.
         
         USE WITH CAUTION. """
+        if len(self.items) <= MAXBITMAPDISPATCH:
+            new = self.to_listdispatch(len(self.items))
+            return new._iremove(key)
+        
         self._ireplace(key, self.sentinel)
+        return self
+    
+    def to_bitmapdispatch(self):
+        dispatch = BitMapDispatch()
+        for key, value in enumerate(self.items):
+            if value is not self.sentinel:
+                dispatch._ireplace(key, item)
+        return dispatch
     
     def __iter__(self):
         return (item for item in self.items if item is not self.sentinel)
@@ -334,12 +353,16 @@ class BitMapDispatch(object):
     def replace(self, key, item):
         """ Return a new BitMapDispatch with the the keyth item replaced
         with item. """
+        if len(self.items) > MAXBITMAPDISPATCH:
+            new = self.to_listdispatch(BRANCH)
+            return new._ireplace(key, item)
+        
         # If the item already existed in the list, we need to replace it.
         # Otherwise, it will be added to the list at the appropriate
         # position.
         notnew = bool(self.bitmap & 1 << key)
         newmap = self.bitmap | 1 << key
-        idx = bit_count(idx & ((1 << key) - 1))
+        idx = bit_count(self.bitmap & ((1 << key) - 1))
         return BitMapDispatch(
             newmap,
             # If notnew is True, the item that is replaced by the new item
@@ -352,6 +375,10 @@ class BitMapDispatch(object):
         """ Replace keyth item with item.
         
         USE WITH CAUTION. """
+        if len(self.items) > MAXBITMAPDISPATCH:
+            new = self.to_listdispatch(BRANCH)
+            return new._ireplace(key, item)
+        
         notnew = bool(self.bitmap & 1 << key)
         self.bitmap |= 1 << key
         idx = bit_count(self.bitmap & ((1 << key) - 1))
@@ -361,6 +388,8 @@ class BitMapDispatch(object):
             self.items[idx] = item
         else:
             self.items.insert(idx, item)
+        
+        return self
     
     def get(self, key, default=None):
         """ Get keyth item. If it is not present, return default. """
@@ -386,6 +415,7 @@ class BitMapDispatch(object):
         idx = bit_count(self.bitmap & ((1 << key) - 1))
         self.bitmap &= ~(1 << key)
         self.items.pop(idx)
+        return self
     
     def __getitem__(self, key):
         if not self.bitmap & 1 << key:
@@ -396,7 +426,7 @@ class BitMapDispatch(object):
         """ Return ListDispatch with the same key to value connections as this
         BitMapDispatch. """
         return ListDispatch(
-            [self[n] for n in xrange(nitems)]
+            None, [self.get(n, ListDispatch.sentinel) for n in xrange(nitems)]
         )
     
     def __iter__(self):
@@ -412,7 +442,7 @@ class DispatchNode(object):
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
-            children = ListDispatch(BRANCH)
+            children = BitMapDispatch()
         
         self.children = children
     
@@ -434,7 +464,7 @@ class DispatchNode(object):
     @doc(IASSOC)
     def _iassoc(self, hsh, shift, node):
         rlv = relevant(hsh, shift)
-        self.children._ireplace(
+        self.children = self.children._ireplace(
             rlv, 
             self.children.get(rlv, NULLNODE)._iassoc(hsh, shift + SHIFT, node)
         )
@@ -478,11 +508,11 @@ class DispatchNode(object):
         rlv = relevant(hsh, shift)
         newchild = self.children[rlv].without(hsh, shift + SHIFT, key)
         if newchild is NULLNODE:
-            self.children._iremove(rlv)
+            self.children = self.children._iremove(rlv)
             if not newchildren:
                 return NULLNODE
         else:
-            self.children._ireplace(rlv, newchild)
+            self.children = self.children._ireplace(rlv, newchild)
         
         self.children = newchildren
         return self
@@ -597,7 +627,7 @@ def main():
     
     s = time.time()
     mp = PersistentTreeMap()
-    for _ in xrange(22500):
+    for _ in xrange(225000):
         one, other = os.urandom(20), os.urandom(25)
         mp2 = mp.assoc(one, other)
         try:
@@ -617,11 +647,11 @@ def main():
     print 'PersistentHashMap:', time.time() - s
     assert mp[one] == other
     # This /may/ actually fail if we are unlucky, but it's a good start.
-    assert len(list(iter(mp))) == 22500
+    assert len(list(iter(mp))) == 225000
     
     s = time.time()
     dct = dict()
-    for _ in xrange(22500):
+    for _ in xrange(225000):
         one, other = os.urandom(20), os.urandom(25)
         dct2 = copy(dct)
         dct2[one] = other
