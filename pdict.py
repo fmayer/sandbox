@@ -42,14 +42,14 @@ def doc(docstring):
 
 
 ASSOC = "\n".join([
-    "Add LeafNode node whose key's hash is hsh to the node or its children.",
+    "Add AssocNode node whose key's hash is hsh to the node or its children.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH. If a node with the same key already",
     "exists, override it.",
 ])
 
 IASSOC = "\n".join([
-    "Modify so that the LeafNode whose key's hash is hsh is added to it.",
+    "Modify so that the AssocNode whose key's hash is hsh is added to it.",
     "USE WITH CAUTION.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH. If a node with the same key already",
@@ -57,19 +57,19 @@ IASSOC = "\n".join([
 ])
 
 GET = "\n".join([
-    "Get value of the LeafNode with key whose hash is hsh in the subtree.",
+    "Get value of the AssocNode with key whose hash is hsh in the subtree.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
 ])
 
 WITHOUT = "\n".join([
-    "Remove LeafNode with key whose hash is hsh from the subtree.",
+    "Remove AssocNode with key whose hash is hsh from the subtree.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
 ])
 
 IWITHOUT = "\n".join([
-    "Modify so that the LeafNode whose key's hash is hsh is removed from it.",
+    "Modify so that the AssocNode whose key's hash is hsh is removed from it.",
     "USE WITH CAUTION.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
@@ -115,8 +115,8 @@ class NullNode(object):
 NULLNODE = NullNode()
 
 
-class LeafNode(object):
-    """ A LeafNode contains the actual key-value mapping. """
+class AssocNode(object):
+    """ A AssocNode contains the actual key-value mapping. """
     __slots__ = ['key', 'value', 'hsh']
     def __init__(self, key, value):
         self.key = key
@@ -125,7 +125,7 @@ class LeafNode(object):
     
     @doc(GET)
     def get(self, hsh, shift, key):
-        # If the key does not match the key of the LeafNode, thus the hash
+        # If the key does not match the key of the AssocNode, thus the hash
         # matches to the current level, but it is not the correct node,
         # raise a KeyError, otherwise return the value.
         if key != self.key:
@@ -163,7 +163,7 @@ class LeafNode(object):
     
     @doc(WITHOUT)
     def without(self, hsh, shift, key):
-        # If the key matches the key of this LeafNode, returning NULLNODE
+        # If the key matches the key of this AssocNode, returning NULLNODE
         # will remove the Node from the map. Otherwise raise a KeyError.
         if key != self.key:
             raise KeyError(key)
@@ -192,7 +192,7 @@ class HashCollisionNode(object):
     @doc(GET)
     def get(self, hsh, shift, key):
         # To get the child we want we need to iterate over all possible ones.
-        # The contents of children are always LeafNodes, so we can safely access
+        # The contents of children are always AssocNodes, so we can safely access
         # the key member.
         for node in self.children:
             if key == node.key:
@@ -545,7 +545,7 @@ class PersistentTreeMap(object):
         """ Return copy of self with an association between key and value.
         May override an existing association. """
         return PersistentTreeMap(
-            self.root.assoc(hash(key), 0, LeafNode(key, value))
+            self.root.assoc(hash(key), 0, AssocNode(key, value))
         )
     
     def _iassoc(self, key, value):
@@ -555,7 +555,7 @@ class PersistentTreeMap(object):
         USE WITH CAUTION: This should only be used if no other reference
         to the PersistentTreeMap may exist. """
         return PersistentTreeMap(
-            self.root._iassoc(hash(key), 0, LeafNode(key, value))
+            self.root._iassoc(hash(key), 0, AssocNode(key, value))
         )
     
     def without(self, key):
