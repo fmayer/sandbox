@@ -326,7 +326,7 @@ class ListDispatch(object):
         dispatch = BitMapDispatch()
         for key, value in enumerate(self.items):
             if value is not self.sentinel:
-                dispatch._ireplace(key, item)
+                dispatch._ireplace(key, value)
         return dispatch
     
     def __iter__(self):
@@ -514,7 +514,6 @@ class DispatchNode(object):
         else:
             self.children = self.children._ireplace(rlv, newchild)
         
-        self.children = newchildren
         return self
     
     def __iter__(self):
