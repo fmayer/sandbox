@@ -635,8 +635,10 @@ def main():
     mp = PersistentTreeMap().volatile()
     for _ in xrange(22500):
         one, other = os.urandom(20), os.urandom(25)
-        mp = mp.assoc(one, other)
+        mp2 = mp.assoc(one, other)
         assert mp[one] == other
+        assert mp2[one] == other
+        mp = mp2
     pmp = mp.persistent()    
     
     s = time.time()
