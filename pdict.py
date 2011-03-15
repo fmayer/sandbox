@@ -547,29 +547,10 @@ class PersistentTreeMap(object):
             self.root.assoc(hash(key), 0, AssocNode(key, value))
         )
     
-    def _iassoc(self, key, value):
-        """ Update this PersistentTreeMap to contain an association between
-        key and value.
-        
-        USE WITH CAUTION: This should only be used if no other reference
-        to the PersistentTreeMap may exist. """
-        return PersistentTreeMap(
-            self.root._iassoc(hash(key), 0, AssocNode(key, value))
-        )
-    
     def without(self, key):
         """ Return copy of self with key removed. """
         return PersistentTreeMap(
             self.root.without(hash(key), 0, key)
-        )
-    
-    def _iwithout(self, key):
-        """ Remove key.
-        
-        USE WITH CAUTION: This should only be used if no other reference
-        to the PersistentTreeMap may exist. """
-        return PersistentTreeMap(
-            self.root._iwithout(hash(key), 0, key)
         )
     
     def __iter__(self):
@@ -583,13 +564,48 @@ class PersistentTreeMap(object):
     def itervalues(self):
         return self.root.itervalues()
     
-    @classmethod
-    def from_dict(cls, dct):
+    @staticmethod
+    def from_dict(dct):
         """ Create PersistentTreeMap from existing dictionary. """
-        mp = cls()
+        mp = VolatileTreeMap()
         for key, value in dct:
-            mp = mp._iassoc(key, value)
-        return mp
+            mp = mp.assoc(key, value)
+        return mp.persistent()
+    
+    def volatile(self):
+        return VolatileTreeMap(deepcopy(self.root))
+
+
+class VolatileTreeMap(PersistentTreeMap):
+    _assoc = PersistentTreeMap.assoc
+    _without = PersistentTreeMap.without
+    
+    def assoc(self, key, value):
+        """ Update this VolatileTreeMap to contain an association between
+        key and value.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root._iassoc(hash(key), 0, AssocNode(key, value))
+        return self
+    
+    def without(self, key):
+        """ Remove key.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root._iwithout(hash(key), 0, key)
+        return self
+    
+    @staticmethod
+    def _err(self, *args):
+        raise TypeError("VolatileTreeMap was already made persistent.")
+    
+    def persistent(self):
+        self.without = self._without
+        self.assoc = self._assoc
+        
+        return self
 
 
 def main():    
@@ -618,11 +634,12 @@ def main():
     # Prevent expensive look-up in loop, hence the from-import.
     from copy import copy
 
-    mp = PersistentTreeMap()
+    mp = PersistentTreeMap().volatile()
     for _ in xrange(22500):
         one, other = os.urandom(20), os.urandom(25)
-        mp = mp._iassoc(one, other)
+        mp = mp.assoc(one, other)
         assert mp[one] == other
+    pmp = mp.persistent()    
     
     s = time.time()
     mp = PersistentTreeMap()
@@ -648,21 +665,41 @@ def main():
     # This /may/ actually fail if we are unlucky, but it's a good start.
     assert len(list(iter(mp))) == 225000
     
-    s = time.time()
-    dct = dict()
-    for _ in xrange(225000):
-        one, other = os.urandom(20), os.urandom(25)
-        dct2 = copy(dct)
-        dct2[one] = other
-        try:
-            dct[one]
-        except KeyError:
-            assert True
-        else:
-            assert False
-        dct = dct2
-        assert dct[one] == other
-    print 'Builtin dict:', time.time() - s
+    #s = time.time()
+    #dct = dict()
+    #for _ in xrange(225000):
+        #one, other = os.urandom(20), os.urandom(25)
+        #dct2 = copy(dct)
+        #dct2[one] = other
+        #try:
+            #dct[one]
+        #except KeyError:
+            #assert True
+        #else:
+            #assert False
+        #dct = dct2
+        #assert dct[one] == other
+    #print 'Builtin dict:', time.time() - s
+    
+    mp4 = mp3.volatile()
+    mp5 = mp4.assoc('foo', 'bar')
+    assert mp4['foo'] == 'bar'
+    assert mp5['foo'] == 'bar'
+    assert mp4 is mp5
+    
+    mp6 = mp5.persistent()
+    mp7 = mp6.assoc('foo', 'spam')
+    assert mp4['foo'] == 'bar'
+    assert mp5['foo'] == 'bar'
+    assert mp6['foo'] == 'bar'
+    assert mp7['foo'] == 'spam'
+    
+    try:
+        mp3['foo']
+    except KeyError:
+        assert True
+    else:
+        assert False
 
 
 if __name__ == '__main__':
