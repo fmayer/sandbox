@@ -599,10 +599,6 @@ class VolatileTreeMap(PersistentTreeMap):
         self.root = self.root._iwithout(hash(key), 0, key)
         return self
     
-    @staticmethod
-    def _err(self, *args):
-        raise TypeError("VolatileTreeMap was already made persistent.")
-    
     def persistent(self):
         self.without = self._without
         self.assoc = self._assoc
