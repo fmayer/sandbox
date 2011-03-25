@@ -31,10 +31,9 @@ class Trampoline(object):
         while True:
             try:
                 val = fun(*args, **kwargs)
+                break
             except TailCall, e:
                 fun, args, kwargs = e.args
-            else:
-                break
         return val
 
 
