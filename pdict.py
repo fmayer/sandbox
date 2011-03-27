@@ -90,7 +90,6 @@ class NullNode(object):
     # created because it only returns the new node, hence _iassoc = assoc.
     _iassoc = assoc
     
-    @doc(GET)
     def get(self, hsh, shift, key):
         # There is no entry with the searched key because the hash leads
         # to a branch ending in a NullNode.
@@ -117,12 +116,11 @@ class NullNode(object):
 NULLNODE = NullNode()
 
 
-class AssocNode(object):
+class SetNode(object):
     """ A AssocNode contains the actual key-value mapping. """
-    __slots__ = ['key', 'value', 'hsh']
-    def __init__(self, key, value):
+    __slots__ = ['key', 'hsh']
+    def __init__(self, key):
         self.key = key
-        self.value = value
         self.hsh = hash(key)
     
     @doc(GET)
@@ -132,7 +130,7 @@ class AssocNode(object):
         # raise a KeyError, otherwise return the value.
         if key != self.key:
             raise KeyError(key)
-        return self.value
+        return self
     
     @doc(ASSOC)
     def assoc(self, hsh, shift, node):
@@ -174,13 +172,15 @@ class AssocNode(object):
     _iwithout = without
     
     def __iter__(self):
-        yield self.key
-    
-    def iteritems(self):
-        yield self.key, self.value
-    
-    def itervalues(self):
-        yield self.value
+        yield self
+
+
+class AssocNode(SetNode):
+    """ A AssocNode contains the actual key-value mapping. """
+    __slots__ = ['value']
+    def __init__(self, key, value):
+        SetNode.__init__(self, key)
+        self.value = value
 
 
 class HashCollisionNode(object):
@@ -194,11 +194,11 @@ class HashCollisionNode(object):
     @doc(GET)
     def get(self, hsh, shift, key):
         # To get the child we want we need to iterate over all possible ones.
-        # The contents of children are always AssocNodes, so we can safely access
-        # the key member.
+        # The contents of children are always AssocNodes,
+        # so we can safely access the key member.
         for node in self.children:
             if key == node.key:
-                return node.value
+                return node
         raise KeyError(key)
     
     @doc(ASSOC)
@@ -247,16 +247,6 @@ class HashCollisionNode(object):
     def __iter__(self):
         for node in self.children:
             for elem in node:
-                yield elem
-
-    def iteritems(self):
-        for child in self.children:
-            for elem in child.iteritems():
-                yield elem
-    
-    def itervalues(self):
-        for child in self.children:
-            for elem in child.itervalues():
                 yield elem
 
 
@@ -522,16 +512,6 @@ class DispatchNode(object):
         for child in self.children:
             for elem in child:
                 yield elem
-    
-    def iteritems(self):
-        for child in self.children:
-            for elem in child.iteritems():
-                yield elem
-    
-    def itervalues(self):
-        for child in self.children:
-            for elem in child.itervalues():
-                yield elem
 
 
 class PersistentTreeMap(object):
@@ -540,7 +520,7 @@ class PersistentTreeMap(object):
         self.root = root
     
     def __getitem__(self, key):
-        return self.root.get(hash(key), 0, key)
+        return self.root.get(hash(key), 0, key).value
     
     def assoc(self, key, value):
         """ Return copy of self with an association between key and value.
@@ -556,15 +536,18 @@ class PersistentTreeMap(object):
         )
     
     def __iter__(self):
-        return iter(self.root)
+        for node in self.root:
+            yield node.key
     
     iterkeys = __iter__
     
     def iteritems(self):
-        return self.root.iteritems()
+        for node in self.root:
+            yield node.key, node.value
     
     def itervalues(self):
-        return self.root.itervalues()
+        for node in self.root:
+            yield node.value
     
     @staticmethod
     def from_dict(dct):
@@ -602,6 +585,75 @@ class VolatileTreeMap(PersistentTreeMap):
     def persistent(self):
         self.without = self._without
         self.assoc = self._assoc
+        
+        return self
+
+
+class PersistentTreeSet(object):
+    __slots__ = ['root']
+    def __init__(self, root=NULLNODE):
+        self.root = root
+    
+    def __contains__(self, key):
+        try:
+            self.root.get(hash(key), 0, key)
+            return  True
+        except KeyError:
+            return False
+    
+    def add(self, key):
+        """ Return copy of self with an association between key and value.
+        May override an existing association. """
+        return PersistentTreeMap(
+            self.root.assoc(hash(key), 0, SetNode(key))
+        )
+    
+    def without(self, key):
+        """ Return copy of self with key removed. """
+        return PersistentTreeMap(
+            self.root.without(hash(key), 0, key)
+        )
+    
+    def __iter__(self):
+        for node in self.root:
+            yield node.key
+    
+    @staticmethod
+    def from_set(set_):
+        """ Create PersistentTreeSet from existing set. """
+        mp = VolatileTreeSet()
+        for key in set_:
+            mp = mp.add(key)
+        return mp.persistent()
+    
+    def volatile(self):
+        return VolatileTreeSet(deepcopy(self.root))
+
+
+class VolatileTreeSet(PersistentTreeSet):
+    _add = PersistentTreeSet.add
+    _without = PersistentTreeSet.without
+    
+    def add(self, key):
+        """ Update this VolatileTreeMap to contain an association between
+        key and value.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root.assoc(hash(key), 0, SetNode(key))
+        return self
+    
+    def without(self, key):
+        """ Remove key.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root._iwithout(hash(key), 0, key)
+        return self
+    
+    def persistent(self):
+        self.without = self._without
+        self.add = self._add
         
         return self
 
