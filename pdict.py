@@ -12,6 +12,8 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+from copy import deepcopy
+
 SHIFT = 5
 BMAP = (1 << SHIFT) - 1
 BRANCH = 2 ** SHIFT
@@ -42,14 +44,14 @@ def doc(docstring):
 
 
 ASSOC = "\n".join([
-    "Add LeafNode node whose key's hash is hsh to the node or its children.",
+    "Add AssocNode node whose key's hash is hsh to the node or its children.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH. If a node with the same key already",
     "exists, override it.",
 ])
 
 IASSOC = "\n".join([
-    "Modify so that the LeafNode whose key's hash is hsh is added to it.",
+    "Modify so that the AssocNode whose key's hash is hsh is added to it.",
     "USE WITH CAUTION.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH. If a node with the same key already",
@@ -57,19 +59,19 @@ IASSOC = "\n".join([
 ])
 
 GET = "\n".join([
-    "Get value of the LeafNode with key whose hash is hsh in the subtree.",
+    "Get value of the AssocNode with key whose hash is hsh in the subtree.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
 ])
 
 WITHOUT = "\n".join([
-    "Remove LeafNode with key whose hash is hsh from the subtree.",
+    "Remove AssocNode with key whose hash is hsh from the subtree.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
 ])
 
 IWITHOUT = "\n".join([
-    "Modify so that the LeafNode whose key's hash is hsh is removed from it.",
+    "Modify so that the AssocNode whose key's hash is hsh is removed from it.",
     "USE WITH CAUTION.",
     "shift refers to the current level in the tree, which must be a multiple",
     "of the global constant BRANCH.",
@@ -88,7 +90,6 @@ class NullNode(object):
     # created because it only returns the new node, hence _iassoc = assoc.
     _iassoc = assoc
     
-    @doc(GET)
     def get(self, hsh, shift, key):
         # There is no entry with the searched key because the hash leads
         # to a branch ending in a NullNode.
@@ -115,22 +116,21 @@ class NullNode(object):
 NULLNODE = NullNode()
 
 
-class LeafNode(object):
-    """ A LeafNode contains the actual key-value mapping. """
-    __slots__ = ['key', 'value', 'hsh']
-    def __init__(self, key, value):
+class SetNode(object):
+    """ A AssocNode contains the actual key-value mapping. """
+    __slots__ = ['key', 'hsh']
+    def __init__(self, key):
         self.key = key
-        self.value = value
         self.hsh = hash(key)
     
     @doc(GET)
     def get(self, hsh, shift, key):
-        # If the key does not match the key of the LeafNode, thus the hash
+        # If the key does not match the key of the AssocNode, thus the hash
         # matches to the current level, but it is not the correct node,
         # raise a KeyError, otherwise return the value.
         if key != self.key:
             raise KeyError(key)
-        return self.value
+        return self
     
     @doc(ASSOC)
     def assoc(self, hsh, shift, node):
@@ -163,7 +163,7 @@ class LeafNode(object):
     
     @doc(WITHOUT)
     def without(self, hsh, shift, key):
-        # If the key matches the key of this LeafNode, returning NULLNODE
+        # If the key matches the key of this AssocNode, returning NULLNODE
         # will remove the Node from the map. Otherwise raise a KeyError.
         if key != self.key:
             raise KeyError(key)
@@ -172,13 +172,15 @@ class LeafNode(object):
     _iwithout = without
     
     def __iter__(self):
-        yield self.key
-    
-    def iteritems(self):
-        yield self.key, self.value
-    
-    def itervalues(self):
-        yield self.value
+        yield self
+
+
+class AssocNode(SetNode):
+    """ A AssocNode contains the actual key-value mapping. """
+    __slots__ = ['value']
+    def __init__(self, key, value):
+        SetNode.__init__(self, key)
+        self.value = value
 
 
 class HashCollisionNode(object):
@@ -192,11 +194,11 @@ class HashCollisionNode(object):
     @doc(GET)
     def get(self, hsh, shift, key):
         # To get the child we want we need to iterate over all possible ones.
-        # The contents of children are always LeafNodes, so we can safely access
-        # the key member.
+        # The contents of children are always AssocNodes,
+        # so we can safely access the key member.
         for node in self.children:
             if key == node.key:
-                return node.value
+                return node
         raise KeyError(key)
     
     @doc(ASSOC)
@@ -245,16 +247,6 @@ class HashCollisionNode(object):
     def __iter__(self):
         for node in self.children:
             for elem in node:
-                yield elem
-
-    def iteritems(self):
-        for child in self.children:
-            for elem in child.iteritems():
-                yield elem
-    
-    def itervalues(self):
-        for child in self.children:
-            for elem in child.itervalues():
                 yield elem
 
 
@@ -326,7 +318,7 @@ class ListDispatch(object):
         dispatch = BitMapDispatch()
         for key, value in enumerate(self.items):
             if value is not self.sentinel:
-                dispatch._ireplace(key, item)
+                dispatch._ireplace(key, value)
         return dispatch
     
     def __iter__(self):
@@ -506,22 +498,11 @@ class DispatchNode(object):
         else:
             self.children = self.children._ireplace(rlv, newchild)
         
-        self.children = newchildren
         return self
     
     def __iter__(self):
         for child in self.children:
             for elem in child:
-                yield elem
-    
-    def iteritems(self):
-        for child in self.children:
-            for elem in child.iteritems():
-                yield elem
-    
-    def itervalues(self):
-        for child in self.children:
-            for elem in child.itervalues():
                 yield elem
 
 
@@ -531,23 +512,13 @@ class PersistentTreeMap(object):
         self.root = root
     
     def __getitem__(self, key):
-        return self.root.get(hash(key), 0, key)
+        return self.root.get(hash(key), 0, key).value
     
     def assoc(self, key, value):
         """ Return copy of self with an association between key and value.
         May override an existing association. """
         return PersistentTreeMap(
-            self.root.assoc(hash(key), 0, LeafNode(key, value))
-        )
-    
-    def _iassoc(self, key, value):
-        """ Update this PersistentTreeMap to contain an association between
-        key and value.
-        
-        USE WITH CAUTION: This should only be used if no other reference
-        to the PersistentTreeMap may exist. """
-        return PersistentTreeMap(
-            self.root._iassoc(hash(key), 0, LeafNode(key, value))
+            self.root.assoc(hash(key), 0, AssocNode(key, value))
         )
     
     def without(self, key):
@@ -556,33 +527,127 @@ class PersistentTreeMap(object):
             self.root.without(hash(key), 0, key)
         )
     
-    def _iwithout(self, key):
-        """ Remove key.
-        
-        USE WITH CAUTION: This should only be used if no other reference
-        to the PersistentTreeMap may exist. """
-        return PersistentTreeMap(
-            self.root._iwithout(hash(key), 0, key)
-        )
-    
     def __iter__(self):
-        return iter(self.root)
+        for node in self.root:
+            yield node.key
     
     iterkeys = __iter__
     
     def iteritems(self):
-        return self.root.iteritems()
+        for node in self.root:
+            yield node.key, node.value
     
     def itervalues(self):
-        return self.root.itervalues()
+        for node in self.root:
+            yield node.value
     
-    @classmethod
-    def from_dict(cls, dct):
+    @staticmethod
+    def from_dict(dct):
         """ Create PersistentTreeMap from existing dictionary. """
-        mp = cls()
+        mp = VolatileTreeMap()
         for key, value in dct:
-            mp = mp._iassoc(key, value)
-        return mp
+            mp = mp.assoc(key, value)
+        return mp.persistent()
+    
+    def volatile(self):
+        return VolatileTreeMap(deepcopy(self.root))
+
+
+class VolatileTreeMap(PersistentTreeMap):
+    _assoc = PersistentTreeMap.assoc
+    _without = PersistentTreeMap.without
+    
+    def assoc(self, key, value):
+        """ Update this VolatileTreeMap to contain an association between
+        key and value.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root._iassoc(hash(key), 0, AssocNode(key, value))
+        return self
+    
+    def without(self, key):
+        """ Remove key.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root._iwithout(hash(key), 0, key)
+        return self
+    
+    def persistent(self):
+        self.without = self._without
+        self.assoc = self._assoc
+        
+        return self
+
+
+class PersistentTreeSet(object):
+    __slots__ = ['root']
+    def __init__(self, root=NULLNODE):
+        self.root = root
+    
+    def __contains__(self, key):
+        try:
+            self.root.get(hash(key), 0, key)
+            return  True
+        except KeyError:
+            return False
+    
+    def add(self, key):
+        """ Return copy of self with an association between key and value.
+        May override an existing association. """
+        return PersistentTreeMap(
+            self.root.assoc(hash(key), 0, SetNode(key))
+        )
+    
+    def without(self, key):
+        """ Return copy of self with key removed. """
+        return PersistentTreeMap(
+            self.root.without(hash(key), 0, key)
+        )
+    
+    def __iter__(self):
+        for node in self.root:
+            yield node.key
+    
+    @staticmethod
+    def from_set(set_):
+        """ Create PersistentTreeSet from existing set. """
+        mp = VolatileTreeSet()
+        for key in set_:
+            mp = mp.add(key)
+        return mp.persistent()
+    
+    def volatile(self):
+        return VolatileTreeSet(deepcopy(self.root))
+
+
+class VolatileTreeSet(PersistentTreeSet):
+    _add = PersistentTreeSet.add
+    _without = PersistentTreeSet.without
+    
+    def add(self, key):
+        """ Update this VolatileTreeMap to contain an association between
+        key and value.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root.assoc(hash(key), 0, SetNode(key))
+        return self
+    
+    def without(self, key):
+        """ Remove key.
+        
+        USE WITH CAUTION: This should only be used if no other reference
+        to the PersistentTreeMap may exist. """
+        self.root = self.root._iwithout(hash(key), 0, key)
+        return self
+    
+    def persistent(self):
+        self.without = self._without
+        self.add = self._add
+        
+        return self
 
 
 def main():    
@@ -611,11 +676,14 @@ def main():
     # Prevent expensive look-up in loop, hence the from-import.
     from copy import copy
 
-    mp = PersistentTreeMap()
+    mp = PersistentTreeMap().volatile()
     for _ in xrange(22500):
         one, other = os.urandom(20), os.urandom(25)
-        mp = mp._iassoc(one, other)
+        mp2 = mp.assoc(one, other)
         assert mp[one] == other
+        assert mp2[one] == other
+        mp = mp2
+    pmp = mp.persistent()    
     
     s = time.time()
     mp = PersistentTreeMap()
@@ -641,21 +709,41 @@ def main():
     # This /may/ actually fail if we are unlucky, but it's a good start.
     assert len(list(iter(mp))) == 225000
     
-    s = time.time()
-    dct = dict()
-    for _ in xrange(225000):
-        one, other = os.urandom(20), os.urandom(25)
-        dct2 = copy(dct)
-        dct2[one] = other
-        try:
-            dct[one]
-        except KeyError:
-            assert True
-        else:
-            assert False
-        dct = dct2
-        assert dct[one] == other
-    print 'Builtin dict:', time.time() - s
+    #s = time.time()
+    #dct = dict()
+    #for _ in xrange(225000):
+        #one, other = os.urandom(20), os.urandom(25)
+        #dct2 = copy(dct)
+        #dct2[one] = other
+        #try:
+            #dct[one]
+        #except KeyError:
+            #assert True
+        #else:
+            #assert False
+        #dct = dct2
+        #assert dct[one] == other
+    #print 'Builtin dict:', time.time() - s
+    
+    mp4 = mp3.volatile()
+    mp5 = mp4.assoc('foo', 'bar')
+    assert mp4['foo'] == 'bar'
+    assert mp5['foo'] == 'bar'
+    assert mp4 is mp5
+    
+    mp6 = mp5.persistent()
+    mp7 = mp6.assoc('foo', 'spam')
+    assert mp4['foo'] == 'bar'
+    assert mp5['foo'] == 'bar'
+    assert mp6['foo'] == 'bar'
+    assert mp7['foo'] == 'spam'
+    
+    try:
+        mp3['foo']
+    except KeyError:
+        assert True
+    else:
+        assert False
 
 
 if __name__ == '__main__':
