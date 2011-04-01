@@ -80,9 +80,6 @@ IWITHOUT = "\n".join([
 class NullNode(object):
     """ Dummy node being the leaf of branches that have no entries. """
     __slots__ = []
-    def and_(self, hsh, shift, node):
-        return self
-    
     def xor(self, hsh, shift, node):
         return node    
     
@@ -128,12 +125,6 @@ class SetNode(object):
     def __init__(self, key):
         self.key = key
         self.hsh = hash(key)
-    
-    def and_(self, hsh, shift, node):
-        if node.key == self.key:
-            return node
-        else:
-            return self
     
     def xor(self, hsh, shift, node):
         if node.key == self.key:
@@ -212,15 +203,6 @@ class HashCollisionNode(object):
         self.children = nodes
         self.hsh = hash(nodes[0].hsh)
 
-    def and_(self, hsh, shift, node):
-        newchildren = []
-        for child in self.children:
-            if child.key == node.key:
-                newchildren.append(node)
-            else:
-                newchildren.append(child)
-        return HashCollisionNode(newchildren)        
-    
     def xor(self, hsh, shift, node):
         if not any(node.key == child.key for child in self.children):
             return HashCollisionNode(self.children + [node])
@@ -473,23 +455,6 @@ class DispatchNode(object):
         
         self.children = children
     
-    def and_(self, hsh, shift, node):
-        rlv = relevant(hsh, shift)
-        newchild = self.children.get(rlv, NULLNODE).and_(hsh, shift + SHIFT, node)
-        if newchild is NULLNODE:
-            # This makes sure no dead nodes remain in the tree after
-            # removing an item.
-            newchildren = self.children.remove(rlv)
-            if not newchildren:
-                return NULLNODE
-        else:
-            newchildren = self.children.replace(
-                rlv, 
-                newchild
-            )
-        
-        return DispatchNode(newchildren)
-    
     def xor(self, hsh, shift, node):
         rlv = relevant(hsh, shift)
         newchild = self.children.get(rlv, NULLNODE).xor(hsh, shift + SHIFT, node)
@@ -593,8 +558,24 @@ class PersistentTreeMap(object):
     
     def __and__(self, other):
         new = self.root
-        for node in other.root:
-            new = new.and_(node.hsh, 0, node)
+        
+        one = iter(self.root)
+        other = iter(other.root)
+        
+        for node in one:
+            while True:
+                try:
+                    onode = other.next()
+                except StopIteration:
+                    return PersistentTreeMap(new)
+                
+                if onode.hsh == node.hsh:
+                    new = new.assoc(onode.hsh, 0, onode)
+                    break
+                elif onode.hsh > node.hsh:
+                    new = new.without(node.hsh, 0, node.key)
+                    break
+        
         return PersistentTreeMap(new)
     
     def __xor__(self, other):
