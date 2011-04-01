@@ -362,10 +362,6 @@ class BitMapDispatch(object):
     def replace(self, key, item):
         """ Return a new BitMapDispatch with the the keyth item replaced
         with item. """
-        if len(self.items) > MAXBITMAPDISPATCH:
-            new = self.to_listdispatch(BRANCH)
-            return new._ireplace(key, item)
-        
         # If the item already existed in the list, we need to replace it.
         # Otherwise, it will be added to the list at the appropriate
         # position.
@@ -384,10 +380,6 @@ class BitMapDispatch(object):
         """ Replace keyth item with item.
         
         USE WITH CAUTION. """
-        if len(self.items) > MAXBITMAPDISPATCH:
-            new = self.to_listdispatch(BRANCH)
-            return new._ireplace(key, item)
-        
         notnew = bool(self.bitmap & 1 << key)
         self.bitmap |= 1 << key
         idx = bit_count(self.bitmap & ((1 << key) - 1))
@@ -451,7 +443,7 @@ class DispatchNode(object):
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
-            children = BitMapDispatch()
+            children = ListDispatch(BRANCH)
         
         self.children = children
     
