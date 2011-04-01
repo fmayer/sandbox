@@ -80,6 +80,12 @@ IWITHOUT = "\n".join([
 class NullNode(object):
     """ Dummy node being the leaf of branches that have no entries. """
     __slots__ = []
+    def and_(self, hsh, shift, node):
+        return self
+    
+    def xor(self, hsh, shift, node):
+        return node    
+    
     @doc(ASSOC)
     def assoc(self, hsh, shift, node):
         # Because there currently no node, the new node
@@ -122,6 +128,18 @@ class SetNode(object):
     def __init__(self, key):
         self.key = key
         self.hsh = hash(key)
+    
+    def and_(self, hsh, shift, node):
+        if node.key == self.key:
+            return node
+        else:
+            return self
+    
+    def xor(self, hsh, shift, node):
+        if node.key == self.key:
+            return NULLNODE
+        else:
+            return self.assoc(hsh, shift, node)
     
     @doc(GET)
     def get(self, hsh, shift, key):
@@ -181,6 +199,9 @@ class AssocNode(SetNode):
     def __init__(self, key, value):
         SetNode.__init__(self, key)
         self.value = value
+    
+    def __repr__(self):
+        return '<AssocNode(%r, %r)>' % (self.key, self.value)
 
 
 class HashCollisionNode(object):
@@ -190,6 +211,20 @@ class HashCollisionNode(object):
     def __init__(self, nodes):
         self.children = nodes
         self.hsh = hash(nodes[0].hsh)
+
+    def and_(self, hsh, shift, node):
+        newchildren = []
+        for child in self.children:
+            if child.key == node.key:
+                newchildren.append(node)
+            else:
+                newchildren.append(child)
+        return HashCollisionNode(newchildren)        
+    
+    def xor(self, hsh, shift, node):
+        if not any(node.key == child.key for child in self.children):
+            return HashCollisionNode(self.children + [node])
+        return self    
     
     @doc(GET)
     def get(self, hsh, shift, key):
@@ -438,6 +473,40 @@ class DispatchNode(object):
         
         self.children = children
     
+    def and_(self, hsh, shift, node):
+        rlv = relevant(hsh, shift)
+        newchild = self.children.get(rlv, NULLNODE).and_(hsh, shift + SHIFT, node)
+        if newchild is NULLNODE:
+            # This makes sure no dead nodes remain in the tree after
+            # removing an item.
+            newchildren = self.children.remove(rlv)
+            if not newchildren:
+                return NULLNODE
+        else:
+            newchildren = self.children.replace(
+                rlv, 
+                newchild
+            )
+        
+        return DispatchNode(newchildren)
+    
+    def xor(self, hsh, shift, node):
+        rlv = relevant(hsh, shift)
+        newchild = self.children.get(rlv, NULLNODE).xor(hsh, shift + SHIFT, node)
+        if newchild is NULLNODE:
+            # This makes sure no dead nodes remain in the tree after
+            # removing an item.
+            newchildren = self.children.remove(rlv)
+            if not newchildren:
+                return NULLNODE
+        else:
+            newchildren = self.children.replace(
+                rlv, 
+                newchild
+            )
+        
+        return DispatchNode(newchildren)
+    
     @doc(ASSOC)
     def assoc(self, hsh, shift, node):
         # We need not check whether the return value of
@@ -522,6 +591,24 @@ class PersistentTreeMap(object):
     def __getitem__(self, key):
         return self.root.get(hash(key), 0, key).value
     
+    def __and__(self, other):
+        new = self.root
+        for node in other.root:
+            new = new.and_(node.hsh, 0, node)
+        return PersistentTreeMap(new)
+    
+    def __xor__(self, other):
+        new = self.root
+        for node in other.root:
+            new = new.xor(node.hsh, 0, node)
+        return PersistentTreeMap(new)
+    
+    def __or__(self, other):
+        new = self.root
+        for node in other.root:
+            new = new.replace(node.hsh, 0, node)
+        return PersistentTreeMap(new)
+    
     def assoc(self, key, value):
         """ Return copy of self with an association between key and value.
         May override an existing association. """
@@ -553,7 +640,7 @@ class PersistentTreeMap(object):
     def from_dict(dct):
         """ Create PersistentTreeMap from existing dictionary. """
         mp = VolatileTreeMap()
-        for key, value in dct:
+        for key, value in dct.iteritems():
             mp = mp.assoc(key, value)
         return mp.persistent()
     
