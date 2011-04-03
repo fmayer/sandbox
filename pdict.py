@@ -16,6 +16,8 @@
 
 from copy import deepcopy
 
+SENTINEL = object()
+
 SHIFT = 5
 BMAP = (1 << SHIFT) - 1
 BRANCH = 2 ** SHIFT
@@ -276,11 +278,10 @@ class ListDispatch(object):
     
     Only accepts integers as keys. """
     __slots__ = ['items']
-    sentinel = object()
     
     def __init__(self, nitems=None, items=None):
         if items is None:
-            items = [self.sentinel for _ in xrange(nitems)]
+            items = [SENTINEL for _ in xrange(nitems)]
         self.items = items
     
     def replace(self, key, item):
@@ -302,46 +303,38 @@ class ListDispatch(object):
     
     def __getitem__(self, key):
         value = self.items[key]
-        if value is self.sentinel:
+        if value is SENTINEL:
             raise KeyError(key)
         return value
     
     def get(self, key, default):
         """ Get keyth item. If it is not present, return default. """
         value = self.items[key]
-        if value is not self.sentinel:
+        if value is not SENTINEL:
             return value
         return default
     
     def remove(self, key):
         """ Return new ListDispatch with keyth item removed.
-        Will not raise KeyError if it was not present. """
-        if len(self.items) <= MAXBITMAPDISPATCH:
-            new = self.to_listdispatch(len(self.items))
-            return new._iremove(key)
-        
-        return self.replace(key, self.sentinel)
+        Will not raise KeyError if it was not present. """        
+        return self.replace(key, SENTINEL)
 
     def _iremove(self, key):
         """ Remove keyth item. Will not raise KeyError if it was not present.
         
         USE WITH CAUTION. """
-        if len(self.items) <= MAXBITMAPDISPATCH:
-            new = self.to_listdispatch(len(self.items))
-            return new._iremove(key)
-        
-        self._ireplace(key, self.sentinel)
+        self._ireplace(key, SENTINEL)
         return self
     
     def to_bitmapdispatch(self):
         dispatch = BitMapDispatch()
         for key, value in enumerate(self.items):
-            if value is not self.sentinel:
+            if value is not SENTINEL:
                 dispatch._ireplace(key, value)
         return dispatch
     
     def __iter__(self):
-        return (item for item in self.items if item is not self.sentinel)
+        return (item for item in self.items if item is not SENTINEL)
 
 
 class BitMapDispatch(object):
@@ -429,7 +422,7 @@ class BitMapDispatch(object):
         """ Return ListDispatch with the same key to value connections as this
         BitMapDispatch. """
         return ListDispatch(
-            None, [self.get(n, ListDispatch.sentinel) for n in xrange(nitems)]
+            None, [self.get(n, SENTINEL) for n in xrange(nitems)]
         )
     
     def __iter__(self):
@@ -445,7 +438,7 @@ class DispatchNode(object):
     __slots__ = ['children']
     def __init__(self, children=None):
         if children is None:
-            children = ListDispatch(BRANCH)
+            children = BitMapDispatch()
         
         self.children = children
     
