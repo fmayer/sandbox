@@ -77,6 +77,7 @@ def win_atomic_mv(src, dst):
                     # leave the file-system in an inconsistent state
                     # just because the program is shutting down.
                     os.rename(src, dst)
+                    raise
                 finally:
                     os.unlink(tmp)
             else:
