@@ -18,7 +18,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from itertools import izip
+from itertools import izip, repeat
+
+class super_(object):
+    def __init__(self, value, lvl=1):
+        self.value = value
+        self.lvl = lvl
+
 
 class MultiMethod(object):
     def __init__(self, get):
@@ -38,14 +44,33 @@ class MultiMethod(object):
             return fun
         return _dec
     
-    def get_item(self, objs, super_=False):
+    def get_item(self, objs):
         types = tuple(map(type, objs))
         cached = self.cache.get(types, None)
         if cached is not None:
             return cached
         
-        for signature, fun in self.methods:
+        for signature, fun in reversed(self.methods):
             if all(isinstance(*x) for x in izip(objs, signature)):
+                self.cache[types] = fun
+                return fun
+        raise TypeError
+    
+    def get_superitem(self, objs):
+        types = tuple(map(type, objs))
+        cached = self.cache.get(types, None)
+        if cached is not None:
+            return cached
+        
+        for signature, fun in reversed(self.methods):
+            for obj, cls in izip(objs, signature):
+                n = 0 
+                if isinstance(obj, super_):
+                    n = obj.lvl
+                    obj = obj.value
+                if not issubclass(obj.__class__.__mro__[n], cls):
+                    break
+            else:
                 self.cache[types] = fun
                 return fun
         raise TypeError
@@ -56,17 +81,36 @@ class MultiMethod(object):
     
     def super(self, *args, **kwargs):
         obj = self.get(*args, **kwargs)
-        return self.get_item(obj, True)(*args, **kwargs)
+        fun = self.get_superitem(obj)
+        
+        nargs = []
+        for elem in args:
+            if isinstance(elem, super_):
+                nargs.append(elem.value)
+            else:
+                nargs.append(elem)
+        
+        for k in kwargs:
+            if isinstance(kwargs[k], super_):
+                kwargs[n] = kwargs[k].value
+        
+        return fun(*nargs, **kwargs)
 
 
 if __name__ == '__main__':
+    class String(str):
+        pass
+    
     mm = MultiMethod(lambda *a: a)
     
     @mm.add_dec(str, str)
     def foo(foo, bar):
         return 'String', foo, bar
     
-    
+    @mm.add_dec(String, str)
+    def foo(foo, bar):
+        return 'Fancy', foo, bar, mm.super(super_(foo), bar)
+        
     @mm.add_dec(int, str)
     def foo(foo, bar):
         return 'Int - String', foo, bar
@@ -82,3 +126,5 @@ if __name__ == '__main__':
     
     print mm('foo', 'bar')
     print mm(1, 2)
+    
+    print mm(String('foo'), 'bar')
