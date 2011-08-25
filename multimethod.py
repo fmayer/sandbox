@@ -58,15 +58,12 @@ class MultiMethod(object):
         
         for signature, fun in reversed(self.methods):
             for obj, cls in izip(objs, signature):
-                print obj, objs
                 if isinstance(obj, super):
                     thiscls = obj.__thisclass__
-                    n = 1
+                    if not issubclass(thiscls.__mro__[n], cls):
+                        break
                 else:
-                    thiscls = obj.__class__
-                    n = 0
-                if not issubclass(thiscls.__mro__[n], cls):
-                    break
+                    if isinstance(obj, cls)
             else:
                 self.cache[types] = fun
                 return fun
