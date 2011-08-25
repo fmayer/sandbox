@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from itertools import izip, repeat
+from itertools import izip
 
 class MultiMethod(object):
     def __init__(self, get):
@@ -58,7 +58,6 @@ class MultiMethod(object):
         
         for signature, fun in reversed(self.methods):
             for obj, cls in izip(objs, signature):
-                n = 0 
                 if isinstance(obj, super):
                     thiscls = obj.__thisclass__
                 if not issubclass(thiscls.__mro__[1], cls):
