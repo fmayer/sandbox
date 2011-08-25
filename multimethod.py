@@ -17,6 +17,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+
 from warnings import warn
 from itertools import izip
 
@@ -27,20 +28,6 @@ FAIL = 2
 def _fmt_t(types):
     return ', '.join(type_.__name__ for type_ in types)
 
-
-def _fmt_ovr(override, types, signature):
-    if override == FAIL:
-        raise TypeError
-    elif override == WARN:
-        warn(
-            'Definition (%s) overrides prior definition (%s).' %
-            (_fmt_t(types), _fmt_t(signature)),
-            stacklevel=4
-        )
-    else:
-        raise ValueError('Invalid level for override')
-
-
 class MultiMethod(object):
     def __init__(self, get):
         self.get = get
@@ -49,10 +36,21 @@ class MultiMethod(object):
         self.cache = {}
     
     def add(self, fun, types, override=SILENT):
+        overriden = False
         if override:
-            for signature, fun in self.methods:
+            for signature, _ in self.methods:
                 if all(issubclass(a, b) for a, b in izip(types, signature)):
-                    _fmt_ovr(override, types, signature)
+                    overriden = True
+        if overriden and override == FAIL:
+            raise TypeError
+        elif overriden and override == WARN:
+            warn(
+                'Definition (%s) overrides prior definition (%s).' %
+                (_fmt_t(types), _fmt_t(signature)),
+                stacklevel=3
+            )
+        elif overriden:
+            raise ValueError('Invalid value for override.')
         self.methods.append((types, fun))
     
     def add_dec(self, *types, **kwargs):
@@ -62,88 +60,101 @@ class MultiMethod(object):
             return fun
         return _dec
     
-    def get_item(self, objs):
-        types = tuple(map(type, objs))
-        cached = self.cache.get(types, None)
-        if cached is not None:
-            return cached
-        
-        for signature, fun in reversed(self.methods):
-            if all(isinstance(*x) for x in izip(objs, signature)):
-                self.cache[types] = fun
-                return fun
-        raise TypeError
-    
-    def get_superitem(self, objs):
-        types = tuple(map(type, objs))
-        cached = self.cache.get(types, None)
-        if cached is not None:
-            return cached
-        
-        for signature, fun in reversed(self.methods):
-            for obj, cls in izip(objs, signature):
-                if isinstance(obj, super):
-                    thiscls = obj.__thisclass__
-                    if not issubclass(thiscls.__mro__[1], cls):
-                        break
-                else:
-                    if not isinstance(obj, cls):
-                        break
-            else:
-                self.cache[types] = fun
-                return fun
-        raise TypeError
-    
     def __call__(self, *args, **kwargs):
-        obj = self.get(*args, **kwargs)
-        return self.get_item(obj)(*args, **kwargs)
+        objs = self.get(*args, **kwargs)
+        
+        types = tuple(map(type, objs))
+        
+        # This code is duplicate for performace reasons.
+        cached = self.cache.get(types, None)
+        if cached is not None:
+            return cached(*args, **kwargs)
+        
+        for signature, fun in reversed(self.methods):
+            if all(issubclass(ty, sig) for ty, sig in zip(types, signature)):
+                self.cache[types] = fun
+                return fun(*args, **kwargs)
+        raise TypeError
     
     def super(self, *args, **kwargs):
-        obj = self.get(*args, **kwargs)
-        fun = self.get_superitem(obj)
+        objs = self.get(*args, **kwargs)
+        types = tuple(
+            [
+                x.__thisclass__.__mro__[1] if isinstance(x, super) else type(x)
+                for x in objs
+            ]
+        )
+        nargs = [
+            x.__self__ if isinstance(x, super) else x
+            for x in args
+        ]
         
-        nargs = []
-        for elem in args:
+        for k, elem in kwargs.iteritems():
             if isinstance(elem, super):
-                nargs.append(elem.__self__)
-            else:
-                nargs.append(elem)
+                kwargs[k] = elem.__self__
         
-        for k in kwargs:
-            if isinstance(kwargs[k], super):
-                kwargs[n] = kwargs[k].__self__
+        # This code is duplicate for performace reasons.
+        cached = self.cache.get(types, None)
+        if cached is not None:
+            return cached(*nargs, **kwargs)
         
-        return fun(*nargs, **kwargs)
+        for signature, fun in reversed(self.methods):
+            if all(issubclass(ty, sig) for ty, sig in zip(types, signature)):
+                self.cache[types] = fun
+                return fun(*nargs, **kwargs)
+        raise TypeError
 
 
 if __name__ == '__main__':
     class String(str):
-        pass
+        def foo(self, foo, bar):
+            return 'String', foo, bar
+    
     
     mm = MultiMethod(lambda *a: a)
     
     @mm.add_dec(str, str)
     def foo(foo, bar):
-        return 'String', foo, bar
+        return 'String'
     
-    @mm.add_dec(String, str, override=6)
+    @mm.add_dec(String, str, override=WARN)
     def foo(foo, bar):
-        return 'Fancy', foo, bar, mm.super(super(String, foo), bar)
+        return 'Fancy', mm.super(super(String, foo), bar)
         
     @mm.add_dec(int, str)
     def foo(foo, bar):
-        return 'Int - String', foo, bar
+        return 'Int - String'
     
-    print mm('foo', 'bar')
-    print mm(1, 'bar')
-    print mm(1, 'bar')
-    print mm('foo', 'bar')
+    assert mm('foo', 'bar') == 'String'
+    assert mm(1, 'bar') == 'Int - String'
     
     @mm.add_dec(int, int)
     def foo(foo, bar):
         return foo + bar
     
-    print mm('foo', 'bar')
-    print mm(1, 2)
+    assert mm(1, 2) == 3
     
-    print mm(String('foo'), 'bar')
+    assert mm(String('foo'), 'bar') == ('Fancy', 'String')
+    from time import time
+    
+    s = time()
+    for _ in xrange(int(1e6)):
+        mm('foo', 'bar')
+    print time() - s
+
+    s = time()
+    for _ in xrange(int(1e6)):
+        foo('foo', 'bar')
+    print time() - s
+
+    st = String('foo')
+    s = time()
+    for _ in xrange(int(1e6)):
+        st.foo('foo', 'bar')
+    print time() - s
+
+
+    s = time()
+    for _ in xrange(int(1e6)):
+        mm.super(super(String, String('foo')), 'bar')
+    print time() - s
