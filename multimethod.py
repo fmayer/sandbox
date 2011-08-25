@@ -17,8 +17,29 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-
+from warnings import warn
 from itertools import izip
+
+SILENT = 0
+WARN = 1
+FAIL = 2
+
+def _fmt_t(types):
+    return ', '.join(type_.__name__ for type_ in types)
+
+
+def _fmt_ovr(override, types, signature):
+    if override == FAIL:
+        raise TypeError
+    elif override == WARN:
+        warn(
+            'Definition (%s) overrides prior definition (%s).' %
+            (_fmt_t(types), _fmt_t(signature)),
+            stacklevel=4
+        )
+    else:
+        raise ValueError('Invalid level for override')
+
 
 class MultiMethod(object):
     def __init__(self, get):
@@ -27,14 +48,17 @@ class MultiMethod(object):
         self.methods = []
         self.cache = {}
     
-    def add(self, fun, types):
-        self.cache = {}
+    def add(self, fun, types, override=SILENT):
+        if override:
+            for signature, fun in self.methods:
+                if all(issubclass(a, b) for a, b in izip(types, signature)):
+                    _fmt_ovr(override, types, signature)
         self.methods.append((types, fun))
     
-    def add_dec(self, *types):
+    def add_dec(self, *types, **kwargs):
         self.cache = {}
         def _dec(fun):
-            self.methods.append((types, fun))
+            self.add(fun, types, kwargs.get('override', SILENT))
             return fun
         return _dec
     
@@ -102,7 +126,7 @@ if __name__ == '__main__':
     def foo(foo, bar):
         return 'String', foo, bar
     
-    @mm.add_dec(String, str)
+    @mm.add_dec(String, str, override=6)
     def foo(foo, bar):
         return 'Fancy', foo, bar, mm.super(super(String, foo), bar)
         
