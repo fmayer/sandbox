@@ -20,12 +20,6 @@
 
 from itertools import izip, repeat
 
-class super_(object):
-    def __init__(self, value, lvl=1):
-        self.value = value
-        self.lvl = lvl
-
-
 class MultiMethod(object):
     def __init__(self, get):
         self.get = get
@@ -65,10 +59,9 @@ class MultiMethod(object):
         for signature, fun in reversed(self.methods):
             for obj, cls in izip(objs, signature):
                 n = 0 
-                if isinstance(obj, super_):
-                    n = obj.lvl
-                    obj = obj.value
-                if not issubclass(obj.__class__.__mro__[n], cls):
+                if isinstance(obj, super):
+                    thiscls = obj.__thisclass__
+                if not issubclass(thiscls.__mro__[1], cls):
                     break
             else:
                 self.cache[types] = fun
@@ -85,14 +78,14 @@ class MultiMethod(object):
         
         nargs = []
         for elem in args:
-            if isinstance(elem, super_):
-                nargs.append(elem.value)
+            if isinstance(elem, super):
+                nargs.append(elem.__self__)
             else:
                 nargs.append(elem)
         
         for k in kwargs:
-            if isinstance(kwargs[k], super_):
-                kwargs[n] = kwargs[k].value
+            if isinstance(kwargs[k], super):
+                kwargs[n] = kwargs[k].__self__
         
         return fun(*nargs, **kwargs)
 
@@ -109,7 +102,7 @@ if __name__ == '__main__':
     
     @mm.add_dec(String, str)
     def foo(foo, bar):
-        return 'Fancy', foo, bar, mm.super(super_(foo), bar)
+        return 'Fancy', foo, bar, mm.super(super(String, foo), bar)
         
     @mm.add_dec(int, str)
     def foo(foo, bar):
